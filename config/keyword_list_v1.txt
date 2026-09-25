@@ -1,0 +1,46 @@
+# 论文搜索工具 V1 关键词人工速查表
+# 权威配置与权重请以 screening_rules_v1.yaml 为准。
+
+[强阳性]
+KD
+knowledge distillation
+knowledge-distillation
+teacher-student distillation
+self-distillation
+feature distillation
+representation distillation
+relational distillation
+attention distillation
+response distillation
+logit distillation
+policy distillation
+reasoning distillation
+online distillation
+offline distillation
+cross-modal distillation
+multimodal distillation
+model distillation
+
+[词根]
+distill / distilled / distilling / distillation
+
+[Teacher]
+teacher; teacher model; teacher network; large teacher; pretrained teacher; frozen teacher
+
+[Student]
+student; student model; student network; compact student; lightweight student; small model
+
+[知识迁移]
+transfer; knowledge transfer; feature transfer; representation transfer; guidance; imitate;
+imitation; mimic; soft target; soft label; alignment; supervision; knowledge inheritance
+
+[大模型/Foundation Model]
+foundation model; vision foundation model; large language model; LLM; vision-language model;
+VLM; multimodal large language model; MLLM; pretrained model; compact model; lightweight model
+
+[高效AI/压缩]
+pruning; structured pruning; quantization; compression; lightweight; efficient; real-time;
+mobile; edge; on-device; compact; latency; FLOPs; inference speed
+
+[Negative/Boundary]
+dataset distillation; data distillation; dataset condensation; synthetic dataset; coreset

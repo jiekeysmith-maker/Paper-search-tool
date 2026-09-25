@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Runtime outputs are intentionally local and reproducible.
+output/

@@ -1,0 +1,25 @@
+http:
+  user_agent: "PaperSearchTool/1.0 (local academic metadata collection; respectful single-threaded client)"
+  timeout_seconds: 30
+  retries: 3
+  backoff_factor: 1.0
+  request_interval_seconds: 0.6
+
+venues:
+  CVPR:
+    base_url: "https://openaccess.thecvf.com"
+    tracks:
+      Main Conference:
+        enabled: true
+        listing_url: "/CVPR{year}?day=all"
+        detail_path_marker: "/content/CVPR{year}/html/"
+      Findings:
+        enabled: true
+        listing_url: "/CVPR{year}_findings?day=all"
+        detail_path_marker: "/content/CVPR{year}F/html/"
+      Workshop:
+        enabled: false
+        listing_type: "workshop_index"
+        listing_url: "/CVPR{year}_workshops"
+        workshop_path_prefix: "/CVPR{year}_workshops/"
+        detail_path_marker: "/content/CVPR{year}W/"
