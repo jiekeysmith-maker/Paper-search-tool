@@ -48,6 +48,8 @@ class RuleEngine:
         self.thresholds = config["thresholds"]
         self.ambiguous = config.get("ambiguous", {})
         self.distill_regex = re.compile(config["regex"]["distill_root"], re.IGNORECASE)
+        self.kd_regex = re.compile(config["regex"]["kd_acronym"], re.IGNORECASE)
+        self.kd_tree_regex = re.compile(config["regex"]["kd_tree"], re.IGNORECASE)
 
     def evaluate(self, paper: dict[str, object]) -> dict[str, object]:
         title = clean_cell(paper.get("Title（标题）"))
@@ -64,12 +66,23 @@ class RuleEngine:
             text, self.phrases["negative_boundary"], int(self.caps.get("negative_boundary_hits", 2))
         )
         distill_hit = bool(self.distill_regex.search(text))
+        # Remove spatial-index terms before looking for the KD acronym. This prevents
+        # KD-tree, KD tree, and k-d tree from becoming Knowledge Distillation evidence.
+        kd_search_text = self.kd_tree_regex.sub(" ", text)
+        kd_hit = bool(self.kd_regex.search(kd_search_text))
+        kd_context_hits = _find_phrases(kd_search_text, self.phrases["kd_acronym_context"], phrase_cap)
 
         score = len(strong_hits) * float(self.weights["strong_positive_each"])
         positive_components: list[str] = [f"strong:{term}" for term in strong_hits]
         if distill_hit:
             score += float(self.weights["distill_root"])
             positive_components.append("regex:distill*")
+        if kd_hit:
+            score += float(self.weights["kd_acronym"])
+            positive_components.append("weak:KD")
+        if kd_hit and kd_context_hits:
+            score += float(self.weights["kd_context_combo"])
+            positive_components.append(f"combo:KD+context:{' | '.join(kd_context_hits)}")
         for hits, label, weight_key in (
             (teacher_hits, "teacher", "teacher"),
             (student_hits, "student", "student"),

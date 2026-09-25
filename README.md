@@ -1,6 +1,8 @@
 # 论文搜索工具（Paper Search Tool）V1
 
-这是一个面向科研文献初筛的本地 Python 工具。V1 从 CVF Open Access 获取 CVPR Main Conference 与 Findings 的官方论文元数据，使用完全确定性的 Python 规则进行 Knowledge Distillation（KD）高召回初筛，并生成可追溯表格、人工复核队列、SAFE_DROP 审计样本、官方 PDF Manifest 和中文报告。
+这是一个面向科研文献初筛的本地 Python 工具。V1.1 从 CVF Open Access 获取 CVPR 官方论文元数据，使用完全确定性的 Python 规则进行 Knowledge Distillation（KD）高召回初筛，并生成可追溯表格、人工复核队列、SAFE_DROP 审计样本、官方 PDF Manifest 和中文报告。
+
+本轮默认正式检索范围仅为 **CVPR Main Conference**。Findings 适配代码完整保留，但在 `config/source_config.yaml` 中默认关闭，只作为以后可选的补充池；启用时必须依据 `Track（论文轨道）` 单独统计和复核，不与 Main Conference 核心统计混算。Workshop 同样默认关闭。
 
 本工具不调用 OpenAI API、其他 LLM API 或本地大语言模型；也不进行 P0/P1/P2/P3、Related Work、Research Map 或 Research Gap 判断。
 
@@ -18,10 +20,16 @@ python -m pip install -r requirements.txt
 
 ## 命令
 
-小样本抓取（`--limit` 是所有启用轨道合计上限，按 Main/Findings 轮转取样）：
+小样本抓取（默认仅 Main Conference）：
 
 ```bat
 python main.py crawl --venue CVPR --year 2026 --limit 20
+```
+
+正式全量抓取（默认仅 Main Conference；只建立原始论文池，不下载 PDF）：
+
+```bat
+python main.py crawl --venue CVPR --year 2026
 ```
 
 仅重新筛选，不访问 CVF：
@@ -43,7 +51,7 @@ python main.py download --venue CVPR --year 2026
 python main.py report --venue CVPR --year 2026
 ```
 
-正式全流程（会抓取全量并下载全部候选，请确认后再运行）：
+正式全流程（默认仅 Main Conference；会抓取全量并下载全部候选，请确认后再运行）：
 
 ```bat
 python main.py all --venue CVPR --year 2026
@@ -68,7 +76,8 @@ python main.py report --venue CVPR --year 2026
 
 ## 设计要点
 
-- 官方来源入口在 `config/source_config.yaml`，Workshop 默认关闭。
+- 官方来源入口在 `config/source_config.yaml`：Main Conference 默认开启，Findings 和 Workshop 默认关闭。
+- Findings 仅作为可选补充池。需要时应使用独立的来源配置运行，并始终按 `Track（论文轨道）` 与 Main Conference 分开统计、分开复核。
 - 列表页和论文详情页分别缓存到 `output/CVPR_2026/raw/cache`。
 - 每篇失败独立记录，异常不会中断同批其他论文。
 - 原始论文池永远独立于筛选结果，修改 YAML 后可零网络重筛。
@@ -89,6 +98,5 @@ python -m pytest -q
 - V1 只实现 CVF/CVPR；其他 Venue 需要新增来源适配器。
 - HTML 结构改变时 Parser 测试可发现问题，但仍需更新选择器。
 - 规则只读取 Title + Abstract，无法替代全文科研判断。
-- `KD` 是高召回弱保护信号，可能增加误报；SAFE_DROP 审计和规则版本迭代用于控制漏检风险。
+- 裸 `KD` 只作为弱信号；只有与 Teacher/Student/Distillation/Knowledge/Feature/Logit/Response/Compression 等上下文组合时才提高候选等级。`KD-tree`、`KD tree` 和 `k-d tree` 会被排除出 KD 缩写证据。
 - 抓取是否完整依赖 CVF 当时公开的官方列表；临时网络失败会进入异常队列而非被视为论文不存在。
-

@@ -2,7 +2,6 @@
 # 权威配置与权重请以 screening_rules_v1.yaml 为准。
 
 [强阳性]
-KD
 knowledge distillation
 knowledge-distillation
 teacher-student distillation
@@ -20,6 +19,11 @@ offline distillation
 cross-modal distillation
 multimodal distillation
 model distillation
+
+[KD缩写弱信号]
+独立缩写 KD 仅给弱分；与 teacher / student / distillation / knowledge / feature /
+logit / response / compression / soft label 等上下文组合时才触发候选保护。
+KD-tree / KD tree / k-d tree 不作为 Knowledge Distillation 证据。
 
 [词根]
 distill / distilled / distilling / distillation
@@ -43,4 +47,5 @@ pruning; structured pruning; quantization; compression; lightweight; efficient; 
 mobile; edge; on-device; compact; latency; FLOPs; inference speed
 
 [Negative/Boundary]
-dataset distillation; data distillation; dataset condensation; synthetic dataset; coreset
+dataset distillation; data distillation; dataset condensation; synthetic dataset; coreset;
+KD-tree; KD tree; k-d tree

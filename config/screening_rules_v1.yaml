@@ -1,9 +1,8 @@
-rule_version: "V1"
-description: "High-recall deterministic Knowledge Distillation screening rules"
+rule_version: "V1.1"
+description: "High-recall deterministic Knowledge Distillation screening rules with context-aware KD acronym handling"
 
 phrases:
   strong_positive:
-    - kd
     - knowledge distillation
     - knowledge-distillation
     - teacher-student distillation
@@ -24,6 +23,17 @@ phrases:
     - cross modal distillation
     - multimodal distillation
     - model distillation
+  kd_acronym_context:
+    - teacher
+    - student
+    - distillation
+    - distilling
+    - knowledge
+    - feature
+    - logit
+    - response
+    - compression
+    - soft label
   teacher:
     - teacher
     - teacher model
@@ -93,13 +103,20 @@ phrases:
     - dataset condensation
     - synthetic dataset
     - coreset
+    - kd-tree
+    - kd tree
+    - k-d tree
 
 regex:
   distill_root: "\\bdistill(?:s|ed|ing|ation|ations|ative)?\\b"
+  kd_acronym: "(?<![\\w-])kd(?![\\w-])"
+  kd_tree: "\\b(?:kd[\\s-]+tree|k[\\s-]+d[\\s-]+tree)\\b"
 
 weights:
   strong_positive_each: 10.0
   distill_root: 3.0
+  kd_acronym: 1.5
+  kd_context_combo: 5.0
   teacher: 1.5
   student: 1.5
   knowledge_transfer: 2.0

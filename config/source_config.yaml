@@ -14,7 +14,7 @@ venues:
         listing_url: "/CVPR{year}?day=all"
         detail_path_marker: "/content/CVPR{year}/html/"
       Findings:
-        enabled: true
+        enabled: false
         listing_url: "/CVPR{year}_findings?day=all"
         detail_path_marker: "/content/CVPR{year}F/html/"
       Workshop:

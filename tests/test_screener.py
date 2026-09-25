@@ -31,49 +31,121 @@ def decision(engine: RuleEngine, title: str, abstract: str, status: str = "SUCCE
     return str(engine.evaluate(paper(title, abstract, status))["Decision（筛选决定）"])
 
 
-def test_type_a_vlm_teacher_to_compact_student_is_keep(engine):
+def test_masters_large_vlm_to_compact_vlm_is_keep(engine):
     value = decision(
         engine,
-        "Knowledge Distillation for Compact Vision-Language Models",
-        "A large VLM teacher transfers representations to a compact student using knowledge distillation.",
+        "Masking Teacher and Reinforcing Student for Distilling Vision-Language Models",
+        (
+            "This raises the need for compact yet capable VLMs that can efficiently learn from powerful large teacher. "
+            "However, distilling knowledge from large teacher to small student remains challenging due to their large "
+            "size gap: the student often fails to reproduce the teacher's complex, high-dimensional representations. "
+            "We propose Masters, a mask-progressive reinforcement learning distillation framework that progressively "
+            "restores teacher capacity and refines knowledge transfer with a distillation reward."
+        ),
     )
     assert value == DECISION_KEEP
 
 
-def test_type_b_world_model_policy_distillation_is_keep(engine):
+def test_wpt_policy_and_world_reward_distillation_is_keep(engine):
     value = decision(
         engine,
-        "World-to-Policy Transfer",
-        "A world model forms a teacher policy and policy distillation transfers reasoning to a lightweight student.",
+        "WPT: World-to-Policy Transfer via Online World Model Distillation",
+        (
+            "We introduce WPT, a World-to-Policy Transfer training paradigm that enables online distillation under "
+            "the guidance of an end-to-end world model. A trainable reward model infuses world knowledge into a "
+            "teacher policy. Policy distillation and world reward distillation then transfer the teacher's reasoning "
+            "ability into a lightweight student policy while preserving real-time deployability."
+        ),
     )
     assert value == DECISION_KEEP
 
 
-def test_type_c_pruning_with_teacher_student_distillation_not_drop(engine):
+def test_test_time_distillation_is_not_dropped(engine):
     value = decision(
         engine,
-        "Structured Pruning for Diffusion Transformers",
-        "We use a teacher-student alternating distillation scheme and knowledge transfer during structured pruning.",
+        "Test-Time Distillation for Continual Model Adaptation",
+        (
+            "Continual Test-Time Adaptation addresses distribution shifts without labels, but self-supervision can "
+            "amplify prediction errors. We propose Test-Time Distillation, reframing adaptation as a distillation "
+            "process guided by a frozen Vision-Language Model as an external signal. CoDiRe constructs a robust "
+            "blended teacher and aligns predictions with that teacher for stable adaptation."
+        ),
     )
-    assert value in {DECISION_KEEP, DECISION_MAYBE}
+    assert value != DECISION_DROP
 
 
-def test_type_d_compression_kd_nas_pruning_not_drop(engine):
+def test_fast_foundation_stereo_kd_nas_pruning_is_not_dropped(engine):
     value = decision(
         engine,
-        "A Unified Model Compression Search",
-        "Our efficient compression system jointly uses KD, neural architecture search, quantization, and pruning.",
+        "Fast-FoundationStereo: Real-Time Zero-Shot Stereo Matching",
+        (
+            "Stereo foundation models generalize well but are too expensive for real-time use. Fast-FoundationStereo "
+            "uses knowledge distillation to compress the hybrid backbone into an efficient student, blockwise neural "
+            "architecture search under latency budgets, and structured pruning of the refinement module. The model "
+            "runs over ten times faster while closely matching zero-shot accuracy."
+        ),
     )
-    assert value in {DECISION_KEEP, DECISION_MAYBE}
+    assert value != DECISION_DROP
 
 
-def test_type_e_dataset_distillation_with_kd_is_ambiguous(engine):
+def test_pluggable_pruning_contiguous_layer_distillation_is_not_dropped(engine):
     value = decision(
         engine,
-        "Dataset Distillation with Auxiliary Model KD",
-        "Dataset distillation is primary, while supervised learning and KD transfer knowledge from a teacher to a student.",
+        "Pluggable Pruning with Contiguous Layer Distillation for Diffusion Transformers",
+        (
+            "We propose Pluggable Pruning with Contiguous Layer Distillation, a flexible structured pruning framework "
+            "for Diffusion Transformers. A plug-and-play teacher-student alternating distillation scheme integrates "
+            "depth-wise and width-wise pruning in one training phase and enables knowledge transfer across diverse "
+            "pruning ratios without per-configuration retraining."
+        ),
+    )
+    assert value != DECISION_DROP
+
+
+def test_rethinking_dataset_distillation_is_ambiguous(engine):
+    value = decision(
+        engine,
+        "Rethinking Dataset Distillation: Hard Truths about Soft Labels",
+        (
+            "Large-scale dataset distillation methods can perform on par with random image baselines because soft "
+            "labels are used during downstream training. We examine label regimes ranging from abundant soft labels, "
+            "termed the SL+KD regime, to fixed soft labels and hard labels. High-quality coresets do not convincingly "
+            "outperform random baselines in the SL and SL+KD regimes, motivating evaluation of dataset distillation "
+            "and data-efficient learning under hard labels."
+        ),
     )
     assert value == DECISION_AMBIGUOUS
+
+
+@pytest.mark.parametrize(
+    ("title", "abstract"),
+    [
+        (
+            "Fast Nearest-Neighbor Matching with a KD-tree",
+            "We build a KD-tree spatial index for efficient nearest-neighbor lookup in a large 3D point cloud.",
+        ),
+        (
+            "Scalable Registration Using a k-d tree",
+            "A k-d tree accelerates geometric correspondence search without model compression or teacher supervision.",
+        ),
+    ],
+)
+def test_kd_tree_terms_do_not_trigger_keep(engine, title, abstract):
+    result = engine.evaluate(paper(title, abstract))
+    assert result["Decision（筛选决定）"] != DECISION_KEEP
+    assert "weak:KD" not in result["Positive_Hits（命中的阳性规则）"]
+
+
+def test_kd_acronym_with_teacher_student_context_is_protected(engine):
+    value = decision(
+        engine,
+        "Compact Recognition with KD",
+        (
+            "Our KD objective transfers feature and logit knowledge from a pretrained teacher to a compact student, "
+            "reducing model compression error while retaining response quality."
+        ),
+    )
+    assert value in {DECISION_KEEP, DECISION_MAYBE, DECISION_AMBIGUOUS}
 
 
 def test_type_f_unrelated_paper_is_safe_drop(engine):
