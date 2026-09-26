@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from src.crawler import crawl_cvf
-from src.downloader import download_candidates
+from src.downloader import download_candidates, download_secondary_candidates
 from src.reporter import generate_report
 from src.screener import screen_papers
 
@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="CVF论文抓取、确定性KD高召回初筛、官方PDF下载与审计报告",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for command in ("crawl", "screen", "download", "report", "all"):
+    for command in ("crawl", "screen", "download", "download-secondary", "report", "all"):
         sub = subparsers.add_parser(command)
         sub.add_argument("--venue", default="CVPR", help="Venue，V1支持CVPR")
         sub.add_argument("--year", required=True, type=int, help="四位年份，例如2026")
@@ -71,6 +71,16 @@ def main(argv: list[str] | None = None) -> int:
                 limit=download_limit,
                 force=args.force,
             )
+        if args.command == "download-secondary":
+            download_limit = args.pdf_limit if args.pdf_limit is not None else args.limit
+            download_secondary_candidates(
+                root=root,
+                venue=args.venue,
+                year=args.year,
+                source_config_path=source_path,
+                limit=download_limit,
+                force=args.force,
+            )
         if args.command in {"report", "all"}:
             generate_report(root, args.venue, args.year)
     except Exception as exc:
@@ -81,4 +91,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

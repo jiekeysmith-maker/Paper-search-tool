@@ -59,7 +59,15 @@ class RuleEngine:
         strong_hits = _find_phrases(text, self.phrases["strong_positive"], int(self.caps.get("strong_positive_hits", 2)))
         teacher_hits = _find_phrases(text, self.phrases["teacher"], phrase_cap)
         student_hits = _find_phrases(text, self.phrases["student"], phrase_cap)
-        transfer_hits = _find_phrases(text, self.phrases["knowledge_transfer"], phrase_cap)
+        split_transfer = "strong_transfer" in self.phrases or "generic_transfer" in self.phrases
+        if split_transfer:
+            strong_transfer_hits = _find_phrases(text, self.phrases.get("strong_transfer", []), phrase_cap)
+            generic_transfer_hits = _find_phrases(text, self.phrases.get("generic_transfer", []), phrase_cap)
+        else:
+            # Backward compatibility for V1.1 rule files.
+            strong_transfer_hits = []
+            generic_transfer_hits = _find_phrases(text, self.phrases.get("knowledge_transfer", []), phrase_cap)
+        transfer_hits = list(dict.fromkeys(strong_transfer_hits + generic_transfer_hits))
         large_hits = _find_phrases(text, self.phrases["large_foundation_model"], phrase_cap)
         efficient_hits = _find_phrases(text, self.phrases["efficient_compression"], phrase_cap)
         negative_hits = _find_phrases(
@@ -86,7 +94,6 @@ class RuleEngine:
         for hits, label, weight_key in (
             (teacher_hits, "teacher", "teacher"),
             (student_hits, "student", "student"),
-            (transfer_hits, "transfer", "knowledge_transfer"),
             (large_hits, "large_model", "large_foundation_model"),
             (efficient_hits, "efficient", "efficient_compression"),
         ):
@@ -94,9 +101,26 @@ class RuleEngine:
                 score += float(self.weights[weight_key])
                 positive_components.append(f"{label}:{' | '.join(hits)}")
 
+        if split_transfer:
+            if strong_transfer_hits:
+                score += float(self.weights["strong_transfer"])
+                positive_components.append(f"transfer_strong:{' | '.join(strong_transfer_hits)}")
+            if generic_transfer_hits:
+                score += float(self.weights["generic_transfer"])
+                positive_components.append(f"transfer_generic:{' | '.join(generic_transfer_hits)}")
+        elif transfer_hits:
+            score += float(self.weights["knowledge_transfer"])
+            positive_components.append(f"transfer:{' | '.join(transfer_hits)}")
+
         teacher_combo = bool(teacher_hits and student_hits and transfer_hits)
-        kd_context = bool(strong_hits or distill_hit or teacher_combo)
-        large_combo = bool(large_hits and (distill_hit or (teacher_hits and student_hits) or transfer_hits))
+        large_combo = bool(
+            large_hits
+            and (
+                distill_hit
+                or (teacher_hits and student_hits)
+                or (strong_transfer_hits if split_transfer else transfer_hits)
+            )
+        )
         efficient_combo = bool(efficient_hits and (distill_hit or (teacher_hits and student_hits)))
         if teacher_combo:
             score += float(self.weights["teacher_student_transfer_combo"])
@@ -122,6 +146,13 @@ class RuleEngine:
         conflict = bool(negative_hits and positive_score_before_negative >= conflict_floor)
         notes: list[str] = []
 
+        contextual_kd = bool(kd_hit and kd_context_hits)
+        distill_with_context = bool(
+            distill_hit
+            and (teacher_hits or student_hits or strong_transfer_hits or large_hits or efficient_hits)
+        )
+        explicit_kd_evidence = bool(strong_hits or contextual_kd or distill_with_context)
+
         if (not abstract and self.ambiguous.get("missing_abstract", True)) or (
             status not in {"", "SUCCESS"} and self.ambiguous.get("incomplete_crawl", True)
         ):
@@ -136,9 +167,9 @@ class RuleEngine:
             decision = DECISION_AMBIGUOUS
             reason = "出现Dataset/Data Distillation等边界概念且含distill词根，保守进入人工复核。"
             notes.append("BOUNDARY_DISTILLATION")
-        elif score >= keep_threshold and (strong_hits or teacher_combo):
+        elif score >= keep_threshold and explicit_kd_evidence:
             decision = DECISION_KEEP
-            reason = "存在明确KD强词或Teacher+Student+Transfer闭环证据，达到KEEP阈值。"
+            reason = "存在明确KD表达、上下文化KD缩写或有模型上下文的distill证据，达到KEEP阈值。"
         elif score >= maybe_threshold or teacher_combo or large_combo or efficient_combo:
             decision = DECISION_MAYBE
             reason = "存在组合式KD/知识迁移迹象，达到MAYBE保护条件。"

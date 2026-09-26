@@ -1,0 +1,164 @@
+rule_version: "V1.2"
+description: "High-recall deterministic KD screening with strict Large/Foundation and Teacher-Student combinations"
+
+phrases:
+  strong_positive:
+    - knowledge distillation
+    - knowledge-distillation
+    - teacher-student distillation
+    - teacher student distillation
+    - self-distillation
+    - self distillation
+    - feature distillation
+    - representation distillation
+    - relational distillation
+    - attention distillation
+    - response distillation
+    - logit distillation
+    - policy distillation
+    - reasoning distillation
+    - online distillation
+    - offline distillation
+    - cross-modal distillation
+    - cross modal distillation
+    - multimodal distillation
+    - model distillation
+  kd_acronym_context:
+    - teacher
+    - student
+    - distillation
+    - distilling
+    - knowledge
+    - feature
+    - logit
+    - response
+    - compression
+    - soft label
+  teacher:
+    - teacher
+    - teacher model
+    - teacher network
+    - large teacher
+    - pretrained teacher
+    - pre-trained teacher
+    - frozen teacher
+    - dual-teacher
+  student:
+    - student
+    - student model
+    - student network
+    - compact student
+    - lightweight student
+    - small model
+  strong_transfer:
+    - knowledge transfer
+    - feature transfer
+    - representation transfer
+    - knowledge inheritance
+    - soft target
+    - soft label
+  generic_transfer:
+    - transfer
+    - guidance
+    - imitate
+    - imitation
+    - mimic
+    - alignment
+    - supervision
+  large_foundation_model:
+    - foundation model
+    - vision foundation model
+    - large language model
+    - llm
+    - vision-language model
+    - vision language model
+    - vlm
+    - multimodal large language model
+    - mllm
+    - pretrained model
+    - pre-trained model
+    - large teacher
+    - compact model
+    - small model
+    - lightweight model
+    - lightweight student
+  efficient_compression:
+    - pruning
+    - structured pruning
+    - quantization
+    - compression
+    - model compression
+    - lightweight
+    - efficient
+    - real-time
+    - mobile
+    - edge
+    - on-device
+    - compact
+    - latency
+    - flops
+    - inference speed
+  negative_boundary:
+    - dataset distillation
+    - data distillation
+    - dataset condensation
+    - kd-tree
+    - kd tree
+    - k-d tree
+
+regex:
+  distill_root: "\\bdistill(?:s|ed|ing|ation|ations|ative)?\\b"
+  kd_acronym: "(?<![\\w-])kd(?![\\w-])"
+  kd_tree: "\\b(?:kd[\\s-]+tree|k[\\s-]+d[\\s-]+tree)\\b"
+
+weights:
+  strong_positive_each: 10.0
+  distill_root: 3.0
+  kd_acronym: 1.5
+  kd_context_combo: 5.0
+  teacher: 1.5
+  student: 1.5
+  strong_transfer: 2.0
+  generic_transfer: 1.0
+  teacher_student_transfer_combo: 7.0
+  large_foundation_model: 1.0
+  large_kd_combo: 4.0
+  efficient_compression: 1.0
+  efficient_kd_combo: 2.0
+  negative_boundary_each: -6.0
+
+caps:
+  strong_positive_hits: 2
+  phrase_hits_per_group: 4
+  negative_boundary_hits: 2
+
+thresholds:
+  keep: 12.0
+  maybe: 6.0
+  near_maybe_margin: 2.0
+  positive_negative_conflict_positive_score: 6.0
+
+ambiguous:
+  missing_abstract: true
+  incomplete_crawl: true
+  negative_with_distill_signal: true
+  lone_distill_signal: true
+  positive_negative_conflict: true
+  near_threshold_with_signal: true
+
+downloads:
+  decisions:
+    - "RULE_KEEP（规则保留）"
+    - "RULE_MAYBE（规则待复核）"
+  download_ambiguous: false
+
+audit:
+  sample_size: 50
+  random_seed: 20260925
+  quotas:
+    random: 0.40
+    near_threshold: 0.25
+    teacher_or_student: 0.15
+    foundation_model: 0.10
+    efficient_compression: 0.10
+

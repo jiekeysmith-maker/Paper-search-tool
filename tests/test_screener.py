@@ -9,7 +9,7 @@ from src.utils import DECISION_AMBIGUOUS, DECISION_DROP, DECISION_KEEP, DECISION
 @pytest.fixture(scope="module")
 def engine() -> RuleEngine:
     root = Path(__file__).resolve().parents[1]
-    return RuleEngine(load_yaml(root / "config" / "screening_rules_v1.yaml"))
+    return RuleEngine(load_yaml(root / "config" / "screening_rules_v1_2.yaml"))
 
 
 def paper(title: str, abstract: str, status: str = "SUCCESS") -> dict[str, object]:
@@ -115,6 +115,66 @@ def test_rethinking_dataset_distillation_is_ambiguous(engine):
         ),
     )
     assert value == DECISION_AMBIGUOUS
+
+
+def test_thermal_det_synthetic_dataset_is_not_negative(engine):
+    result = engine.evaluate(
+        paper(
+            "Thermal-Det: Language-Guided Cross-Modal Distillation for Open-Vocabulary Thermal Object Detection",
+            (
+                "Thermal-Det is an LLM-supervised open-vocabulary detector for thermal images. To enable large-scale "
+                "training, we construct a synthetic dataset with thermally aligned samples. The model jointly optimizes "
+                "detection, captioning, and cross-modal distillation objectives. A frozen RGB teacher provides geometric "
+                "and semantic pseudo-supervision, transferring open-vocabulary knowledge without manual annotation."
+            ),
+        )
+    )
+    assert result["Decision（筛选决定）"] == DECISION_KEEP
+    assert "synthetic dataset" not in result["Negative_Hits（命中的负向规则）"]
+
+
+def test_plain_vlm_alignment_does_not_trigger_large_combo_or_maybe(engine):
+    result = engine.evaluate(
+        paper(
+            "Cross-Modal Alignment for Vision-Language Models",
+            "We improve a vision-language model using image-text alignment on paired web data and a contrastive objective.",
+        )
+    )
+    assert result["Decision（筛选决定）"] == DECISION_DROP
+    assert "combo:large/foundation+KD-transfer" not in result["Positive_Hits（命中的阳性规则）"]
+
+
+def test_llm_supervision_without_kd_does_not_trigger_large_combo(engine):
+    result = engine.evaluate(
+        paper(
+            "Supervised Adaptation of a Large Language Model",
+            "A large language model is optimized with task supervision and human annotations for visual question answering.",
+        )
+    )
+    assert result["Decision（筛选决定）"] == DECISION_DROP
+    assert "combo:large/foundation+KD-transfer" not in result["Positive_Hits（命中的阳性规则）"]
+
+
+def test_foundation_model_with_strong_knowledge_transfer_is_protected(engine):
+    result = engine.evaluate(
+        paper(
+            "Knowledge Transfer from a Vision Foundation Model",
+            "We study knowledge transfer from a vision foundation model into a compact task-specific representation.",
+        )
+    )
+    assert result["Decision（筛选决定）"] in {DECISION_MAYBE, DECISION_AMBIGUOUS}
+    assert "combo:large/foundation+KD-transfer" in result["Positive_Hits（命中的阳性规则）"]
+
+
+def test_teacher_student_generic_alignment_is_maybe_not_keep(engine):
+    result = engine.evaluate(
+        paper(
+            "Teacher-Student Alignment for Robust Recognition",
+            "A teacher network guides a compact student through representation alignment and supervision.",
+        )
+    )
+    assert result["Decision（筛选决定）"] == DECISION_MAYBE
+    assert "combo:teacher+student+transfer" in result["Positive_Hits（命中的阳性规则）"]
 
 
 @pytest.mark.parametrize(

@@ -27,6 +27,25 @@ from .utils import (
 )
 
 
+SECONDARY_DECISION_COLUMN = "Secondary_Decision（二次筛选结果）"
+SECONDARY_REQUIRED_COLUMNS = [
+    "Paper_ID（论文编号）",
+    "Title（标题）",
+    "PDF_URL（官方PDF链接）",
+    SECONDARY_DECISION_COLUMN,
+]
+SECONDARY_MANIFEST_COLUMNS = [
+    "Paper_ID（论文编号）",
+    "Title（标题）",
+    SECONDARY_DECISION_COLUMN,
+    "PDF_URL（官方PDF链接）",
+    "Download_Status（下载状态）",
+    "Local_PDF_Path（本地PDF路径）",
+    "File_Size_Bytes（文件大小_字节）",
+    "Error（错误信息）",
+]
+
+
 WINDOWS_RESERVED = {
     "CON",
     "PRN",
@@ -54,6 +73,60 @@ def build_pdf_filename(paper_id: str, title: str, max_length: int = 180) -> str:
     budget = max(20, max_length - len(safe_id) - len("__.pdf"))
     safe_title = sanitize_filename(title, budget)
     return f"{safe_id}__{safe_title}.pdf"
+
+
+def build_secondary_pdf_filename(paper_id: str, title: str, max_length: int = 180) -> str:
+    """Build the FULL_READ `<Paper_ID>_<Sanitized_Title>.pdf` filename."""
+    safe_id = sanitize_filename(paper_id, 60)
+    budget = max(20, max_length - len(safe_id) - len("_.pdf"))
+    safe_title = sanitize_filename(title, budget)
+    return f"{safe_id}_{safe_title}.pdf"
+
+
+def validate_full_read_frame(frame: pd.DataFrame, source_path: Path) -> pd.DataFrame:
+    """Validate and normalize a topic-controller FULL_READ table before any download."""
+    missing = [column for column in SECONDARY_REQUIRED_COLUMNS if column not in frame.columns]
+    if missing:
+        raise ValueError(f"FULL_READ.csv missing required columns: {', '.join(missing)}; file={source_path}")
+
+    validated = frame.copy()
+    for column in SECONDARY_REQUIRED_COLUMNS:
+        validated[column] = validated[column].map(clean_cell).str.strip()
+
+    invalid_decisions = sorted(
+        value for value in validated[SECONDARY_DECISION_COLUMN].unique() if value != "FULL_READ"
+    )
+    if invalid_decisions:
+        raise ValueError(
+            "FULL_READ.csv contains non-FULL_READ Secondary_Decision values: "
+            + ", ".join(repr(value) for value in invalid_decisions)
+        )
+
+    empty_ids = validated.index[validated["Paper_ID（论文编号）"] == ""].tolist()
+    if empty_ids:
+        raise ValueError(f"FULL_READ.csv contains empty Paper_ID at data rows: {[index + 2 for index in empty_ids]}")
+
+    duplicates = sorted(
+        validated.loc[
+            validated["Paper_ID（论文编号）"].duplicated(keep=False), "Paper_ID（论文编号）"
+        ].unique()
+    )
+    if duplicates:
+        raise ValueError(f"FULL_READ.csv contains duplicate Paper_ID values: {', '.join(duplicates)}")
+
+    empty_urls = validated.index[validated["PDF_URL（官方PDF链接）"] == ""].tolist()
+    if empty_urls:
+        raise ValueError(f"FULL_READ.csv contains empty PDF_URL at data rows: {[index + 2 for index in empty_urls]}")
+
+    return validated
+
+
+def load_full_read_csv(source_path: Path) -> pd.DataFrame:
+    """Read the fixed FULL_READ CSV and fail before download on structural errors."""
+    if not source_path.exists():
+        raise FileNotFoundError(f"FULL_READ.csv not found: {source_path}")
+    frame = pd.read_csv(source_path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    return validate_full_read_frame(frame, source_path)
 
 
 def _session(http_config: dict) -> requests.Session:
@@ -211,4 +284,99 @@ def download_candidates(
     write_csv(manifest_frame, manifest_path, MANIFEST_COLUMNS)
     _rewrite_screening_outputs(frame, paths)
     logger.info("Download stage complete: selected=%d", len(candidates))
+    return manifest_frame
+
+
+def download_secondary_candidates(
+    root: Path,
+    venue: str,
+    year: int,
+    source_config_path: Path,
+    limit: int | None = None,
+    force: bool = False,
+) -> pd.DataFrame:
+    """Download only topic-controller FULL_READ papers into the isolated FULL_READ folder."""
+    paths = ProjectPaths(root, venue.upper(), year)
+    paths.ensure()
+    logger = setup_logger(f"download.secondary.{venue}.{year}", paths.logs / "download_secondary.log")
+    source_path = paths.output_root / "secondary_screening" / "FULL_READ.csv"
+    candidates = load_full_read_csv(source_path)
+    if limit is not None:
+        candidates = candidates.head(limit)
+
+    source_config = load_yaml(source_config_path)
+    http_config = source_config.get("http", {})
+    session = _session(http_config)
+    timeout = float(http_config.get("timeout_seconds", 30))
+    request_interval = float(http_config.get("request_interval_seconds", 0.6))
+    output_folder = paths.pdfs / "FULL_READ"
+    output_folder.mkdir(parents=True, exist_ok=True)
+    manifest_path = paths.manifests / f"{paths.stem}_FULL_READ_PDF_Manifest.csv"
+
+    manifest_by_id: dict[str, dict[str, object]] = {}
+    if manifest_path.exists():
+        previous = pd.read_csv(manifest_path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+        if "Paper_ID（论文编号）" not in previous.columns:
+            raise ValueError(f"Existing FULL_READ manifest is missing Paper_ID column: {manifest_path}")
+        manifest_by_id = {
+            clean_cell(row["Paper_ID（论文编号）"]): row for row in previous.to_dict(orient="records")
+        }
+
+    used_filenames: dict[str, str] = {}
+    for row in candidates.to_dict(orient="records"):
+        paper_id = clean_cell(row["Paper_ID（论文编号）"])
+        title = clean_cell(row["Title（标题）"])
+        pdf_url = clean_cell(row["PDF_URL（官方PDF链接）"])
+        filename = build_secondary_pdf_filename(paper_id, title)
+        filename_key = filename.casefold()
+        if filename_key in used_filenames and used_filenames[filename_key] != paper_id:
+            raise ValueError(
+                f"Sanitized FULL_READ filenames collide for Paper_ID {used_filenames[filename_key]} and {paper_id}: {filename}"
+            )
+        used_filenames[filename_key] = paper_id
+        destination = output_folder / filename
+        status = "FAILED"
+        error = ""
+        size = 0
+
+        if destination.exists() and not force:
+            with destination.open("rb") as handle:
+                valid_existing = destination.stat().st_size > 4 and handle.read(5) == b"%PDF-"
+            if valid_existing:
+                status = "SKIPPED_EXISTS"
+                size = destination.stat().st_size
+                logger.info("PDF SKIPPED_EXISTS: %s", destination)
+            else:
+                status = "INVALID_EXISTING_FILE"
+                error = "Existing file is not a valid PDF and was not overwritten"
+                logger.error("PDF INVALID_EXISTING_FILE: %s", destination)
+        else:
+            try:
+                status, size = download_pdf_file(session, pdf_url, destination, timeout, force=force)
+                if status == "ALREADY_EXISTS":
+                    status = "SKIPPED_EXISTS"
+                logger.info("PDF %s: %s", status, destination)
+                if status == "DOWNLOADED":
+                    time.sleep(request_interval)
+            except Exception as exc:
+                error = f"{type(exc).__name__}: {exc}"
+                logger.exception("FULL_READ PDF failed: %s", pdf_url)
+
+        local_path = str(destination.resolve()) if status in {"DOWNLOADED", "SKIPPED_EXISTS"} else ""
+        manifest_by_id[paper_id] = {
+            "Paper_ID（论文编号）": paper_id,
+            "Title（标题）": title,
+            SECONDARY_DECISION_COLUMN: "FULL_READ",
+            "PDF_URL（官方PDF链接）": pdf_url,
+            "Download_Status（下载状态）": status,
+            "Local_PDF_Path（本地PDF路径）": local_path,
+            "File_Size_Bytes（文件大小_字节）": size,
+            "Error（错误信息）": error,
+        }
+
+    manifest_frame = pd.DataFrame(list(manifest_by_id.values())).reindex(
+        columns=SECONDARY_MANIFEST_COLUMNS, fill_value=""
+    )
+    write_csv(manifest_frame, manifest_path, SECONDARY_MANIFEST_COLUMNS)
+    logger.info("Secondary download stage complete: selected=%d", len(candidates))
     return manifest_frame

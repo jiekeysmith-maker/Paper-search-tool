@@ -45,6 +45,20 @@ python main.py screen --venue CVPR --year 2026 --rules config\screening_rules_v2
 python main.py download --venue CVPR --year 2026
 ```
 
+根据主题总控二次筛选结果，仅下载 `FULL_READ.csv` 中的全文阅读候选：
+
+```bat
+python main.py download-secondary --venue CVPR --year 2026
+```
+
+输入固定为 `output\CVPR_2026\secondary_screening\FULL_READ.csv`，PDF 仅保存到
+`output\CVPR_2026\PDFs\FULL_READ`，不会写入 RULE_KEEP 或 RULE_MAYBE 目录。
+
+`FULL_READ.csv` 的列顺序不限，但必须包含 `Paper_ID（论文编号）`、`Title（标题）`、
+`PDF_URL（官方PDF链接）` 和 `Secondary_Decision（二次筛选结果）`。所有二筛决定必须为
+`FULL_READ`，Paper_ID 必须非空且唯一，PDF_URL 不得为空；任何结构错误都会在联网前终止。
+RESERVE 与 EXCLUDE 不会被下载。
+
 仅生成/刷新报告：
 
 ```bat

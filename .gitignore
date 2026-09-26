@@ -5,3 +5,6 @@ __pycache__/
 
 # Runtime outputs are intentionally local and reproducible.
 output/
+/output/
+__pycache__/
+.pytest_cache/
