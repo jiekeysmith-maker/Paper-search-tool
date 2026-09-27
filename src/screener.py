@@ -10,6 +10,7 @@ from typing import Iterable
 
 import pandas as pd
 
+from .paths import ProjectPaths
 from .utils import (
     DECISION_AMBIGUOUS,
     DECISION_DROP,
@@ -17,7 +18,6 @@ from .utils import (
     DECISION_MAYBE,
     RAW_COLUMNS,
     SCREENING_COLUMNS,
-    ProjectPaths,
     clean_cell,
     load_yaml,
     setup_logger,
@@ -260,10 +260,10 @@ def build_audit_sample(drop_frame: pd.DataFrame, config: dict) -> pd.DataFrame:
 def screen_papers(root: Path, venue: str, year: int, rules_path: Path) -> pd.DataFrame:
     """Screen the persisted raw pool without any web access."""
     paths = ProjectPaths(root, venue.upper(), year)
-    paths.ensure()
-    logger = setup_logger(f"screen.{venue}.{year}", paths.logs / "screening.log")
     if not paths.raw_csv.exists():
         raise FileNotFoundError(f"Raw paper pool not found: {paths.raw_csv}")
+    paths.ensure_stage("screen")
+    logger = setup_logger(f"screen.{venue}.{year}", paths.screening_log)
     config = load_yaml(rules_path)
     engine = RuleEngine(config)
     raw = pd.read_csv(paths.raw_csv, encoding="utf-8-sig", dtype=str, keep_default_na=False)
@@ -272,26 +272,33 @@ def screen_papers(root: Path, venue: str, year: int, rules_path: Path) -> pd.Dat
     write_csv(results, paths.screening_csv, SCREENING_COLUMNS)
     write_xlsx(results, paths.screening_xlsx, SCREENING_COLUMNS)
     decision_files = {
-        DECISION_KEEP: "RULE_KEEP.csv",
-        DECISION_MAYBE: "RULE_MAYBE.csv",
-        DECISION_AMBIGUOUS: "RULE_AMBIGUOUS.csv",
-        DECISION_DROP: "SAFE_DROP.csv",
+        DECISION_KEEP: paths.rule_keep_csv,
+        DECISION_MAYBE: paths.rule_maybe_csv,
+        DECISION_AMBIGUOUS: paths.rule_ambiguous_csv,
+        DECISION_DROP: paths.safe_drop_csv,
     }
-    for decision, filename in decision_files.items():
+    for decision, output_path in decision_files.items():
         subset = results[results["Decision（筛选决定）"] == decision]
-        write_csv(subset, paths.screening / filename, SCREENING_COLUMNS)
+        write_csv(subset, output_path, SCREENING_COLUMNS)
         logger.info("Decision %s: %d", decision, len(subset))
 
     manual = results[
         (results["Decision（筛选决定）"] == DECISION_AMBIGUOUS)
         | (results["Need_Manual_Check（是否需要人工复核）"] == "是")
     ].copy()
-    write_csv(manual, paths.screening / f"{paths.stem}_Manual_Review.csv", SCREENING_COLUMNS)
+    write_csv(manual, paths.manual_review_csv, SCREENING_COLUMNS)
 
     drops = results[results["Decision（筛选决定）"] == DECISION_DROP].copy()
     drops["Rule_Score（规则分数）"] = pd.to_numeric(drops["Rule_Score（规则分数）"], errors="coerce").fillna(0)
     audit = build_audit_sample(drops, config)
     audit_columns = SCREENING_COLUMNS + ["Audit_Stratum（审计分层）"]
-    write_csv(audit, paths.screening / f"{paths.stem}_SAFE_DROP_Audit_Sample.csv", audit_columns)
-    logger.info("Screening complete: total=%d manual=%d audit=%d rules=%s", len(results), len(manual), len(audit), rules_path)
+    write_csv(audit, paths.safe_drop_audit_csv, audit_columns)
+    logger.info(
+        "Screening complete: total=%d manual=%d audit=%d rules=%s Rules Version=%s",
+        len(results),
+        len(manual),
+        len(audit),
+        rules_path,
+        clean_cell(config.get("rule_version", "unknown")),
+    )
     return results

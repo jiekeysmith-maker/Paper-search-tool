@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
@@ -74,81 +73,6 @@ DECISION_KEEP = "RULE_KEEP（规则保留）"
 DECISION_MAYBE = "RULE_MAYBE（规则待复核）"
 DECISION_AMBIGUOUS = "RULE_AMBIGUOUS（规则冲突）"
 DECISION_DROP = "SAFE_DROP（安全排除）"
-
-
-@dataclass(frozen=True)
-class ProjectPaths:
-    """Resolved project and venue-year output paths."""
-
-    root: Path
-    venue: str
-    year: int
-
-    @property
-    def output_root(self) -> Path:
-        return self.root / "output" / f"{self.venue.upper()}_{self.year}"
-
-    @property
-    def raw(self) -> Path:
-        return self.output_root / "raw"
-
-    @property
-    def cache(self) -> Path:
-        return self.raw / "cache"
-
-    @property
-    def screening(self) -> Path:
-        return self.output_root / "screening"
-
-    @property
-    def pdfs(self) -> Path:
-        return self.output_root / "PDFs"
-
-    @property
-    def manifests(self) -> Path:
-        return self.output_root / "manifests"
-
-    @property
-    def reports(self) -> Path:
-        return self.output_root / "reports"
-
-    @property
-    def logs(self) -> Path:
-        return self.output_root / "logs"
-
-    @property
-    def stem(self) -> str:
-        return f"{self.venue.upper()}{self.year}"
-
-    @property
-    def raw_csv(self) -> Path:
-        return self.raw / f"{self.stem}_All_Papers.csv"
-
-    @property
-    def raw_xlsx(self) -> Path:
-        return self.raw / f"{self.stem}_All_Papers.xlsx"
-
-    @property
-    def screening_csv(self) -> Path:
-        return self.screening / f"{self.stem}_KD_Screening.csv"
-
-    @property
-    def screening_xlsx(self) -> Path:
-        return self.screening / f"{self.stem}_KD_Screening.xlsx"
-
-    def ensure(self) -> None:
-        for directory in (
-            self.raw,
-            self.cache / "lists",
-            self.cache / "details",
-            self.screening,
-            self.pdfs / "RULE_KEEP",
-            self.pdfs / "RULE_MAYBE",
-            self.manifests,
-            self.reports,
-            self.logs,
-        ):
-            directory.mkdir(parents=True, exist_ok=True)
 
 
 def load_yaml(path: Path) -> dict:
@@ -231,4 +155,3 @@ def clean_cell(value: object) -> str:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return ""
     return str(value)
-

@@ -14,7 +14,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .parser import ListingEntry, parse_cvf_detail, parse_cvf_listing, parse_cvf_workshop_index
-from .utils import RAW_COLUMNS, ProjectPaths, clean_cell, load_yaml, setup_logger, stable_paper_id, write_csv, write_xlsx
+from .paths import ProjectPaths
+from .utils import RAW_COLUMNS, clean_cell, load_yaml, setup_logger, stable_paper_id, write_csv, write_xlsx
 
 
 class CachedHttpClient:
@@ -89,8 +90,8 @@ def crawl_cvf(
     """Crawl enabled CVF tracks, preserving previous successful rows on resume."""
     venue = venue.upper()
     paths = ProjectPaths(root, venue, year)
-    paths.ensure()
-    logger = setup_logger(f"crawl.{venue}.{year}", paths.logs / "crawl.log")
+    paths.ensure_stage("crawl")
+    logger = setup_logger(f"crawl.{venue}.{year}", paths.crawl_log)
     config = load_yaml(source_config_path)
     try:
         venue_config = config["venues"][venue]
@@ -109,7 +110,7 @@ def crawl_cvf(
         listing_url = urljoin(base_url, str(track_config["listing_url"]).format(year=year))
         cache_name = f"{venue}{year}_{track.replace(' ', '_')}_listing.html"
         try:
-            html, source = client.get_text(listing_url, paths.cache / "lists" / cache_name, force=force)
+            html, source = client.get_text(listing_url, paths.listing_cache(cache_name), force=force)
             marker = str(track_config["detail_path_marker"]).format(year=year)
             if track_config.get("listing_type") == "workshop_index":
                 prefix = str(track_config["workshop_path_prefix"]).format(year=year)
@@ -117,7 +118,7 @@ def crawl_cvf(
                 workshop_entries: list[tuple[str, ListingEntry]] = []
                 for workshop_number, workshop in enumerate(workshops, start=1):
                     safe_number = f"{workshop_number:03d}"
-                    workshop_cache = paths.cache / "lists" / f"{venue}{year}_Workshop_{safe_number}.html"
+                    workshop_cache = paths.listing_cache(f"{venue}{year}_Workshop_{safe_number}.html")
                     try:
                         workshop_html, workshop_source = client.get_text(
                             workshop.listing_url, workshop_cache, force=force
@@ -175,7 +176,7 @@ def crawl_cvf(
             continue
 
         paper_id = stable_paper_id(venue, year, track, entry.official_url)
-        detail_cache = paths.cache / "details" / f"{paper_id}.html"
+        detail_cache = paths.detail_cache(paper_id)
         try:
             html, source = client.get_text(entry.official_url, detail_cache, force=force)
             detail = parse_cvf_detail(html, entry.official_url)
@@ -248,6 +249,6 @@ def crawl_cvf(
         for row in merged_rows
         if clean_cell(row.get("Crawl_Status（抓取状态）")) != "SUCCESS"
     ]
-    write_csv(listing_errors + persistent_failures, paths.raw / f"{paths.stem}_Crawl_Exception_Queue.csv", exception_columns)
+    write_csv(listing_errors + persistent_failures, paths.crawl_exception_csv, exception_columns)
     logger.info("Crawl complete: selected=%d total_saved=%d exceptions=%d", len(selected), len(frame), len(listing_errors) + len(persistent_failures))
     return frame
