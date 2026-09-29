@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from src.corpus_audit import COMPLETENESS_VERIFIED, audit_corpus
 from src.crawler import crawl_cvf
 from src.downloader import (
     download_candidates,
@@ -36,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     for command in (
         "crawl",
+        "audit-corpus",
         "screen",
         "download",
         "download-secondary",
@@ -103,6 +105,21 @@ def main(argv: list[str] | None = None) -> int:
                 force=args.force,
                 title_query=args.title_query,
             )
+        if args.command in {"audit-corpus", "all"}:
+            audit_result = audit_corpus(
+                root=library_root,
+                venue=args.venue,
+                year=args.year,
+                source_config_path=source_path,
+                force=args.force,
+            )
+            print(
+                f"Corpus completeness: {audit_result.status}; "
+                f"report: {audit_result.report_path}"
+            )
+            if args.command == "all" and audit_result.status != COMPLETENESS_VERIFIED:
+                print("Formal proceedings corpus is not verified; all stopped before screening.")
+                return 0
         if args.command in {"screen", "all"}:
             screen_papers(library_root, args.venue, args.year, rules_path)
         if args.command == "download":

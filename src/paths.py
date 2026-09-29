@@ -54,6 +54,14 @@ class ProjectPaths:
         return self.cache_dir / "details"
 
     @property
+    def cache_official_accepted_dir(self) -> Path:
+        return self.cache_dir / "official_accepted"
+
+    @property
+    def cache_formal_verification_dir(self) -> Path:
+        return self.cache_dir / "formal_verification"
+
+    @property
     def screening_dir(self) -> Path:
         return self.year_root / "screening"
 
@@ -110,6 +118,47 @@ class ProjectPaths:
     @property
     def crawl_exception_csv(self) -> Path:
         return self.raw_dir / "Crawl_Exception_Queue.csv"
+
+    @property
+    def official_accepted_csv(self) -> Path:
+        return self.raw_dir / "Official_Accepted_Papers.csv"
+
+    @property
+    def formal_corpus_csv(self) -> Path:
+        return self.raw_dir / "Formal_Proceedings_Corpus.csv"
+
+    @property
+    def formal_corpus_xlsx(self) -> Path:
+        return self.raw_dir / "Formal_Proceedings_Corpus.xlsx"
+
+    @property
+    def corpus_completeness_audit_csv(self) -> Path:
+        return self.raw_dir / "Corpus_Completeness_Audit.csv"
+
+    @property
+    def corpus_audit_status_json(self) -> Path:
+        return self.raw_dir / "Corpus_Completeness_Status.json"
+
+    @property
+    def formal_metadata_incomplete_csv(self) -> Path:
+        return self.raw_dir / "Formal_Metadata_Incomplete.csv"
+
+    @property
+    def formal_verification_resolutions_csv(self) -> Path:
+        """Optional human/official-source resolutions consumed by a later audit rerun."""
+        return self.raw_dir / "Formal_Verification_Resolutions.csv"
+
+    @property
+    def formal_proceedings_supplement_csv(self) -> Path:
+        return self.raw_dir / f"{self.stem}_Formal_Proceedings_Supplement.csv"
+
+    @property
+    def legacy_raw_csv(self) -> Path:
+        return self.raw_dir / f"{self.stem}_All_Papers.csv"
+
+    @property
+    def legacy_crawl_exception_csv(self) -> Path:
+        return self.raw_dir / f"{self.stem}_Crawl_Exception_Queue.csv"
 
     @property
     def screening_csv(self) -> Path:
@@ -208,6 +257,10 @@ class ProjectPaths:
         return self.reports_dir / f"{self.stem}_Status.md"
 
     @property
+    def corpus_completeness_report(self) -> Path:
+        return self.reports_dir / f"{self.stem}_Corpus_Completeness.md"
+
+    @property
     def assignment_qc_report(self) -> Path:
         return self.reports_dir / f"{self.stem}_Assignment_QC.md"
 
@@ -236,6 +289,10 @@ class ProjectPaths:
         return self.logs_dir / "screening.log"
 
     @property
+    def corpus_audit_log(self) -> Path:
+        return self.logs_dir / "corpus_audit.log"
+
+    @property
     def legacy_download_log(self) -> Path:
         return self.logs_dir / "download_legacy.log"
 
@@ -260,6 +317,42 @@ class ProjectPaths:
 
     def detail_cache(self, paper_id: str) -> Path:
         return self.cache_details_dir / f"{paper_id}.html"
+
+    def source_raw_csv(self) -> Path:
+        """Return the existing raw-provenance CSV, including the CVPR 2026 legacy name."""
+        if self.raw_csv.exists():
+            return self.raw_csv
+        if self.legacy_raw_csv.exists():
+            return self.legacy_raw_csv
+        return self.raw_csv
+
+    def source_crawl_exception_csv(self) -> Path:
+        if self.crawl_exception_csv.exists():
+            return self.crawl_exception_csv
+        if self.legacy_crawl_exception_csv.exists():
+            return self.legacy_crawl_exception_csv
+        return self.crawl_exception_csv
+
+    def accepted_page_cache(self) -> Path:
+        return self.cache_official_accepted_dir / f"{self.stem}_AcceptedPapers.html"
+
+    def accepted_page_unavailable_marker(self) -> Path:
+        return self.cache_official_accepted_dir / f"{self.stem}_AcceptedPapers.NOT_FOUND"
+
+    def program_calendar_cache(self) -> Path:
+        return self.cache_official_accepted_dir / f"{self.stem}_ProgramCalendar.html"
+
+    def program_session_cache(self, session_id: str) -> Path:
+        return self.cache_official_accepted_dir / f"{self.stem}_Session_{session_id}.html"
+
+    def ieee_search_cache(self, paper_key: str) -> Path:
+        return self.cache_formal_verification_dir / f"IEEE_Search_{paper_key}.html"
+
+    def ieee_document_cache(self, document_id: str) -> Path:
+        return self.cache_formal_verification_dir / f"IEEE_Document_{document_id}.html"
+
+    def findings_listing_cache(self) -> Path:
+        return self.cache_formal_verification_dir / f"{self.stem}_Findings_Listing.html"
 
     def full_read_order_dir(self, folder: str) -> Path:
         return self.full_read_pdf_dir / folder
@@ -288,6 +381,13 @@ class ProjectPaths:
         stages = {
             "crawl": (self.raw_dir, self.cache_lists_dir, self.cache_details_dir, self.logs_dir),
             "screen": (self.screening_dir, self.logs_dir),
+            "audit-corpus": (
+                self.raw_dir,
+                self.cache_official_accepted_dir,
+                self.cache_formal_verification_dir,
+                self.reports_dir,
+                self.logs_dir,
+            ),
             "download-secondary": (
                 self.manifests_dir,
                 self.reports_dir,

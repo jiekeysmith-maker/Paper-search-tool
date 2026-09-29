@@ -10,6 +10,7 @@ from typing import Iterable
 
 import pandas as pd
 
+from .corpus_audit import require_verified_formal_corpus
 from .paths import ProjectPaths
 from .utils import (
     DECISION_AMBIGUOUS,
@@ -258,15 +259,14 @@ def build_audit_sample(drop_frame: pd.DataFrame, config: dict) -> pd.DataFrame:
 
 
 def screen_papers(root: Path, venue: str, year: int, rules_path: Path) -> pd.DataFrame:
-    """Screen the persisted raw pool without any web access."""
+    """Screen the verified Formal Proceedings corpus without any web access."""
     paths = ProjectPaths(root, venue.upper(), year)
-    if not paths.raw_csv.exists():
-        raise FileNotFoundError(f"Raw paper pool not found: {paths.raw_csv}")
+    formal_corpus_path = require_verified_formal_corpus(paths)
     paths.ensure_stage("screen")
     logger = setup_logger(f"screen.{venue}.{year}", paths.screening_log)
     config = load_yaml(rules_path)
     engine = RuleEngine(config)
-    raw = pd.read_csv(paths.raw_csv, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    raw = pd.read_csv(formal_corpus_path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
     results = pd.DataFrame([engine.evaluate(row) for row in raw.to_dict(orient="records")], columns=SCREENING_COLUMNS)
 
     write_csv(results, paths.screening_csv, SCREENING_COLUMNS)

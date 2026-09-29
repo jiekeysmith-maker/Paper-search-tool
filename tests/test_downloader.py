@@ -650,6 +650,15 @@ def test_download_reserve_command_dispatches_and_retry_flag(monkeypatch, tmp_pat
 
 def test_all_command_does_not_dispatch_legacy_download(monkeypatch, tmp_path):
     monkeypatch.setattr(main_module, "crawl_cvf", lambda **kwargs: pd.DataFrame())
+    monkeypatch.setattr(
+        main_module,
+        "audit_corpus",
+        lambda **kwargs: type(
+            "AuditResult",
+            (),
+            {"status": "VERIFIED", "report_path": tmp_path / "audit.md"},
+        )(),
+    )
     monkeypatch.setattr(main_module, "screen_papers", lambda *args, **kwargs: pd.DataFrame())
 
     def forbidden_legacy_download(**kwargs):

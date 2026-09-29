@@ -1,6 +1,6 @@
 # 论文搜索工具（Paper Search Tool）V1
 
-这是一个面向科研文献初筛的本地 Python 工具。当前V1.2程序从官方来源获取论文元数据，使用完全确定性的 Python 规则进行 Knowledge Distillation（KD）高召回初筛，并管理二次筛选后的官方 PDF。
+这是一个面向科研文献初筛的本地 Python 工具。当前V1.2程序先建立并核验“该Venue-Year最终正式发表的Main Conference Proceedings论文全集”，再使用完全确定性的 Python 规则进行 Knowledge Distillation（KD）高召回初筛，并管理二次筛选后的官方 PDF。
 
 程序工程与论文数据严格分离：
 
@@ -63,16 +63,16 @@ python main.py report --venue CVPR --year 2025 --library-root "D:\Temp\Paper Lib
 
 ## 推荐正式流程
 
-1. `crawl`
-2. `screen`（默认冻结的V1.2规则）
-3. 主题总控对RULE_KEEP、RULE_MAYBE、RULE_AMBIGUOUS做Title+Abstract二筛：KD Method-Centric / Other KD / Exclude
-4. 主题总控生成权威KD REVIEW Assignment CSV
-5. `validate-assignment`
-6. `download-secondary`直接下载到Secondary Class / Assistant最终目录
-7. 五个论文助手全文阅读；允许KD Method-Centric与Other KD相互修正
-8. 大量修正时使用`apply-reclassification`，少量修正可人工移动
-9. 主题总控生成一份最终Research Map Excel
-10. `report`快速检查状态与异常
+1. `crawl`：保存CVF Open Access原始抓取事实
+2. `audit-corpus`：用其他官方来源做Formal Proceedings完整性核验
+3. 仅当Formal Proceedings Corpus为`VERIFIED`时执行`screen`（默认冻结的V1.2规则）
+4. 主题总控对RULE_KEEP、RULE_MAYBE、RULE_AMBIGUOUS做Title+Abstract二筛：KD Method-Centric / Other KD / Exclude
+5. 主题总控生成权威KD REVIEW Assignment CSV
+6. `validate-assignment`
+7. `download-secondary`直接下载到Secondary Class / Assistant最终目录
+8. 五个论文助手全文阅读；允许KD Method-Centric与Other KD相互修正
+9. 大量修正时使用`apply-reclassification`，少量修正可人工移动
+10. 主题总控生成一份最终Research Map Excel；`report`快速检查状态与异常
 
 ## 命令
 
@@ -88,7 +88,24 @@ python main.py crawl --venue CVPR --year 2026 --limit 20
 python main.py crawl --venue CVPR --year 2026
 ```
 
-仅重新筛选，不访问 CVF：
+抓取后先执行正式Proceedings完整性审计：
+
+```bat
+python main.py audit-corpus --venue CVPR --year 2026
+```
+
+CVPR审计优先读取官方`AcceptedPapers`页面；该路由不存在时读取同一官方站点的Main Conference program，并明确排除Findings。Accepted/Program只用于发现CVF可能遗漏或标题变化的候选，不能单独证明正式出版，也不会被直接并入母集。正式身份必须由CVF论文页与BibTeX，或可正常公开核验的IEEE Xplore正式记录确认；无法确认时保持`UNRESOLVED`，审计状态为`REVIEW_REQUIRED`。
+
+审计将四类数据保持分离：
+
+- `raw\All_Papers.csv`：CVF原始抓取事实，不因审计而改写；
+- `raw\Official_Accepted_Papers.csv`：官方Accepted/Program核验来源；
+- `raw\Corpus_Completeness_Audit.csv`：标题对账、差集、正式身份与Resolution；
+- `raw\Formal_Proceedings_Corpus.csv/.xlsx`：仅含正式出版身份已确认的最终母集。
+
+标题匹配分为`EXACT_OR_NORMALIZED_MATCH`、`PROBABLE_TITLE_VARIANT`、`ACCEPTED_ONLY`和`CVF_ONLY`。模糊相似度只生成候选，绝不自动改标题、增删论文或确认身份。`reports\<Venue><Year>_Corpus_Completeness.md`是极简状态报告；`VERIFIED`要求无抓取异常、无未决差异、无未解决标题变体且无正式元数据缺失。
+
+仅重新筛选，不访问 CVF（前提是`audit-corpus`已经生成并验证Formal Proceedings Corpus）：
 
 ```bat
 python main.py screen --venue CVPR --year 2026
@@ -206,7 +223,7 @@ python main.py report --venue CVPR --year 2026
 
 报告输出为`reports\<Venue><Year>_Status.md`，不会复制完整论文列表或运行日志。
 
-兼容命令`all`最多只执行crawl和screen，随后停止并提示`Secondary screening is required`。它不会判断KD Method-Centric / Other KD / Exclude，不生成PDF，也不会绕过人工Gate：
+兼容命令`all`执行`crawl → audit-corpus`，只有审计为`VERIFIED`才继续`screen`，随后停止并提示`Secondary screening is required`。审计为`REVIEW_REQUIRED`或`ERROR`时停在审计阶段。它不会判断KD Method-Centric / Other KD / Exclude，不生成PDF，也不会绕过人工Gate：
 
 ```bat
 python main.py all --venue CVPR --year 2026
@@ -255,7 +272,8 @@ Research Map至少保留`KD_Centrality_Class`、`Centrality_Evidence`、`KD_Core
 - Findings 仅作为可选补充池。需要时应使用独立的来源配置运行，并始终按 `Track（论文轨道）` 与 Main Conference 分开统计、分开复核。
 - 列表页和论文详情页分别缓存到`<Paper Library>\<Venue>\<Year>\raw\cache`。
 - 每篇失败独立记录，异常不会中断同批其他论文。
-- 原始论文池永远独立于筛选结果，修改 YAML 后可零网络重筛。
+- CVF原始论文池、官方Accepted/Program列表、完整性审计表与Formal Proceedings Corpus彼此独立，来源事实不会被覆盖。
+- `screen`只读取状态与文件哈希均通过的`Formal_Proceedings_Corpus.csv`；母集缺失、未验证或审计后被改写都会停止。
 - `config/screening_rules_v1_2.yaml`保存当前V1.2词表、权重、阈值、冲突规则和审计随机种子。
 - `screen`默认使用冻结的V1.2，并在筛选输出、日志和compact report中记录`Rules Version: V1.2`；除非用户显式指定，不回退V1.1，也不自行创建V1.3。
 - SAFE_DROP 不删除原始记录；四类输出都保存标题、摘要、命中规则、理由和官方链接。
@@ -275,4 +293,4 @@ python -m pytest -q
 - HTML 结构改变时 Parser 测试可发现问题，但仍需更新选择器。
 - 规则只读取 Title + Abstract，无法替代全文科研判断。
 - 裸 `KD` 只作为弱信号；只有与 Teacher/Student/Distillation/Knowledge/Feature/Logit/Response/Compression 等上下文组合时才提高候选等级。`KD-tree`、`KD tree` 和 `k-d tree` 会被排除出 KD 缩写证据。
-- 抓取是否完整依赖 CVF 当时公开的官方列表；临时网络失败会进入异常队列而非被视为论文不存在。
+- 官方Accepted/Program页面或IEEE公开访问不可用时会保守标为`REVIEW_REQUIRED/UNRESOLVED`；程序不会绕过登录、验证码或反爬限制。
