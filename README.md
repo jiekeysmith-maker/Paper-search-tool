@@ -88,6 +88,16 @@ python main.py crawl --venue CVPR --year 2026 --limit 20
 python main.py crawl --venue CVPR --year 2026
 ```
 
+如果官方Proceedings列表在首次抓取后补充或更新，只刷新CVF listing：
+
+```bat
+python main.py crawl --venue CVPR --year 2026 --refresh-listing
+```
+
+`--refresh-listing`会强制重新请求所有已启用轨道的listing，但不会重新请求本地已有的`SUCCESS`论文详情；它只抓新发现或此前`FAILED/PARTIAL`的详情，保留listing中暂时缺失的旧成功记录，并将本次新增项写入`raw\CVF_Listing_New_Entries.csv`。默认正式范围仍只有CVPR Main Conference，Findings和Workshop不会因此启用。
+
+CVPR Main Conference语料不再假定`?day=all`能够完整枚举Proceedings。Crawler会从官方页面动态发现当前年份的具体日期页，并以`day=all ∪ all discovered daily pages`构造listing，按`Official_URL`去重。日期页失败、日期发现失败或“相同标题但不同Official URL”都会进入抓取异常队列；程序不会硬编码会议日期、论文总数或预期差额。
+
 抓取后先执行正式Proceedings完整性审计：
 
 ```bat
@@ -95,6 +105,8 @@ python main.py audit-corpus --venue CVPR --year 2026
 ```
 
 CVPR审计优先读取官方`AcceptedPapers`页面；该路由不存在时读取同一官方站点的Main Conference program，并明确排除Findings。Accepted/Program只用于发现CVF可能遗漏或标题变化的候选，不能单独证明正式出版，也不会被直接并入母集。正式身份必须由CVF论文页与BibTeX，或可正常公开核验的IEEE Xplore正式记录确认；无法确认时保持`UNRESOLVED`，审计状态为`REVIEW_REQUIRED`。
+
+对于自动流程仍未定位正式记录的`UNRESOLVED`论文，可选文件`raw\Formal_Verification_Resolutions.csv`用于提供人工发现的官方候选URL。最小字段为`Accepted_Title`、`Accepted_Authors`、`Resolution_Source`、`Resolution_URL`、`Resolution_Note`；当前`Resolution_Source`仅接受`CVF_DIRECT`。该文件只提供定位线索，不能直接决定正式身份：`audit-corpus`会重新请求CVF页面，复用详情解析器，并核验官方host、目标年份路径、CVPR Main Proceedings BibTeX、年份、标题及作者身份。验证失败时仍保持`UNRESOLVED`；文件不存在时审计行为与此前完全兼容。
 
 审计将四类数据保持分离：
 
@@ -243,7 +255,7 @@ python main.py screen --venue CVPR --year 2026
 python main.py report --venue CVPR --year 2026
 ```
 
-`--force` 会忽略 HTML 缓存并重新请求，下载阶段会覆盖同名 PDF。默认会复用缓存、保留已有成功记录并跳过已下载文件。
+`--force` 会同时强制刷新listing和全部详情页，下载阶段会覆盖同名 PDF；它与只刷新listing的`--refresh-listing`含义不同。默认会复用缓存、保留已有成功记录并跳过已下载文件。
 
 ## PDF命名与KD REVIEW Manifest
 

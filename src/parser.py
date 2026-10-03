@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlparse
+from datetime import date
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
 
@@ -18,6 +19,37 @@ class ListingEntry:
 class WorkshopEntry:
     name: str
     listing_url: str
+
+
+def parse_cvf_day_links(html: str, base_url: str, venue: str, year: int) -> list[str]:
+    """Discover same-conference ISO-date listing links from an official CVF page."""
+    soup = BeautifulSoup(html, "html.parser")
+    base = urlparse(base_url)
+    expected_path = f"/{venue.upper()}{year}"
+    discovered: list[str] = []
+    seen: set[str] = set()
+    for anchor in soup.find_all("a", href=True):
+        candidate = urlparse(urljoin(base_url, anchor["href"]))
+        if candidate.scheme != base.scheme or candidate.netloc != base.netloc:
+            continue
+        if candidate.path.rstrip("/") != expected_path:
+            continue
+        day_values = parse_qs(candidate.query).get("day", [])
+        if len(day_values) != 1 or day_values[0] == "all":
+            continue
+        try:
+            parsed_day = date.fromisoformat(day_values[0])
+        except ValueError:
+            continue
+        if parsed_day.year != year:
+            continue
+        canonical = urlunparse(
+            (candidate.scheme, candidate.netloc, expected_path, "", urlencode({"day": parsed_day.isoformat()}), "")
+        )
+        if canonical not in seen:
+            discovered.append(canonical)
+            seen.add(canonical)
+    return discovered
 
 
 def parse_cvf_listing(html: str, base_url: str, expected_path_marker: str) -> list[ListingEntry]:

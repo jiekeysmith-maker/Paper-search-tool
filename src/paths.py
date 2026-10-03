@@ -120,6 +120,11 @@ class ProjectPaths:
         return self.raw_dir / "Crawl_Exception_Queue.csv"
 
     @property
+    def cvf_listing_new_entries_csv(self) -> Path:
+        """Incremental audit of entries first seen during a listing refresh."""
+        return self.raw_dir / "CVF_Listing_New_Entries.csv"
+
+    @property
     def official_accepted_csv(self) -> Path:
         return self.raw_dir / "Official_Accepted_Papers.csv"
 
@@ -350,6 +355,9 @@ class ProjectPaths:
 
     def ieee_document_cache(self, document_id: str) -> Path:
         return self.cache_formal_verification_dir / f"IEEE_Document_{document_id}.html"
+
+    def cvf_direct_verification_cache(self, paper_key: str) -> Path:
+        return self.cache_formal_verification_dir / f"CVF_Direct_{paper_key}.html"
 
     def findings_listing_cache(self) -> Path:
         return self.cache_formal_verification_dir / f"{self.stem}_Findings_Listing.html"

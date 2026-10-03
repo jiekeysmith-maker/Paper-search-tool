@@ -62,6 +62,12 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--limit", type=positive_int, help="抓取/下载小样本上限；抓取时在轨道间轮转")
         sub.add_argument("--pdf-limit", type=positive_int, help="显式PDF下载命令的下载上限")
         sub.add_argument("--force", action="store_true", help="忽略缓存重新请求，或覆盖已有PDF")
+        if command in {"crawl", "all"}:
+            sub.add_argument(
+                "--refresh-listing",
+                action="store_true",
+                help="只强制刷新CVF列表页；复用已有SUCCESS详情，仅抓新增或失败论文",
+            )
         sub.add_argument("--title-query", help="仅在CVF列表中按标题过滤，供定向Smoke Test使用")
         if command in {"download-secondary", "download-reserve"}:
             mode = sub.add_mutually_exclusive_group()
@@ -103,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
                 source_config_path=source_path,
                 limit=args.limit,
                 force=args.force,
+                refresh_listing=args.refresh_listing,
                 title_query=args.title_query,
             )
         if args.command in {"audit-corpus", "all"}:

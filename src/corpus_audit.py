@@ -27,6 +27,7 @@ from .official_sources import (
     parse_ieee_exact_document_link,
 )
 from .paths import ProjectPaths
+from .parser import parse_cvf_detail
 from .utils import RAW_COLUMNS, clean_cell, load_yaml, setup_logger, write_csv, write_xlsx
 
 
@@ -46,6 +47,15 @@ AUDIT_ACCEPTED_ONLY = "ACCEPTED_ONLY"
 AUDIT_CVF_ONLY = "CVF_ONLY"
 AUDIT_DUPLICATE_ACCEPTED = "DUPLICATE_ACCEPTED_TITLE"
 AUDIT_DUPLICATE_CVF = "DUPLICATE_CVF_TITLE"
+
+RESOLUTION_SOURCE_CVF_DIRECT = "CVF_DIRECT"
+RESOLUTION_COLUMNS = [
+    "Accepted_Title",
+    "Accepted_Authors",
+    "Resolution_Source",
+    "Resolution_URL",
+    "Resolution_Note",
+]
 
 FORMAL_EXTRA_COLUMNS = [
     "Corpus_Source",
@@ -484,6 +494,169 @@ def _attempt_ieee_verification(
         return None
 
 
+def _read_formal_verification_resolutions(path: Path) -> list[dict[str, str]]:
+    """Read the optional human-supplied official-URL discovery file."""
+    if not path.exists():
+        return []
+    frame = pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    missing = [column for column in RESOLUTION_COLUMNS if column not in frame.columns]
+    if missing:
+        raise ValueError(f"Formal verification resolutions missing required columns: {missing}")
+    return [
+        {column: clean_cell(row.get(column)) for column in RESOLUTION_COLUMNS}
+        for row in frame.to_dict(orient="records")
+    ]
+
+
+def _attempt_cvf_direct_verification(
+    client: CachedHttpClient,
+    paths: ProjectPaths,
+    record: dict[str, object],
+    resolution: dict[str, str],
+    venue: str,
+    year: int,
+    force: bool,
+    *,
+    accepted_author_counts: dict[str, int],
+) -> dict[str, object] | None:
+    """Verify one human-discovered direct CVF page without trusting the CSV assertion."""
+    source = clean_cell(resolution.get("Resolution_Source")).upper()
+    resolution_url = clean_cell(resolution.get("Resolution_URL"))
+    accepted_title = clean_cell(record.get("Accepted_Title"))
+    accepted_authors = clean_cell(record.get("Authors"))
+    supplied_title = clean_cell(resolution.get("Accepted_Title"))
+    supplied_authors = clean_cell(resolution.get("Accepted_Authors"))
+
+    def reject(reason: str) -> None:
+        existing = clean_cell(record.get("Notes"))
+        record["Notes"] = f"{existing} CVF_DIRECT rejected: {reason}".strip()
+        record["Resolution"] = "CVF_DIRECT_REJECTED"
+
+    if source != RESOLUTION_SOURCE_CVF_DIRECT:
+        reject(f"unsupported Resolution_Source={source or '<blank>'}.")
+        return None
+    if normalize_title(supplied_title) != normalize_title(accepted_title):
+        reject("Accepted_Title does not identify this official Program record.")
+        return None
+    if supplied_authors and normalize_authors(supplied_authors) != normalize_authors(accepted_authors):
+        reject("Accepted_Authors conflicts with the official Program record.")
+        return None
+
+    parsed_url = urlparse(resolution_url)
+    required_prefix = f"/content/{venue.upper()}{year}/html/"
+    if (
+        parsed_url.scheme.casefold() != "https"
+        or (parsed_url.hostname or "").casefold() != "openaccess.thecvf.com"
+        or not parsed_url.path.casefold().startswith(required_prefix.casefold())
+        or not parsed_url.path.casefold().endswith(".html")
+    ):
+        reject("Resolution_URL is not an official CVF Main Proceedings detail page for the target year.")
+        return None
+
+    key = hashlib.sha1(resolution_url.encode("utf-8")).hexdigest()[:16]
+    try:
+        html, _ = client.get_text(
+            resolution_url,
+            paths.cvf_direct_verification_cache(key),
+            force=force,
+        )
+        detail = parse_cvf_detail(html, resolution_url)
+    except Exception as exc:
+        reject(f"page fetch/parse failed: {type(exc).__name__}: {exc}")
+        return None
+
+    missing_detail = [
+        field
+        for field in ("title", "authors", "abstract", "pdf_url", "bibtex")
+        if not clean_cell(detail.get(field))
+    ]
+    if missing_detail:
+        reject("official page is missing required metadata: " + ", ".join(missing_detail))
+        return None
+
+    raw_row: dict[str, object] = {
+        "Paper_ID（论文编号）": stable_supplemental_paper_id(
+            venue, year, RESOLUTION_SOURCE_CVF_DIRECT, resolution_url
+        ),
+        "Title（标题）": detail["title"],
+        "Authors（作者）": detail["authors"],
+        "Abstract（摘要）": detail["abstract"],
+        "Venue（会议/期刊）": venue.upper(),
+        "Year（年份）": str(year),
+        "Track（论文轨道）": "Main Conference",
+        "Official_URL（官方论文页面）": resolution_url,
+        "PDF_URL（官方PDF链接）": detail["pdf_url"],
+        "BibTeX（BibTeX信息）": detail["bibtex"],
+        "Crawl_Status（抓取状态）": "SUPPLEMENTAL_OFFICIAL",
+        "Crawl_Error（抓取错误）": "",
+        "Notes（备注）": "Official CVF direct supplemental record; absent from original listing crawl.",
+    }
+    formal_status, _ = _cvf_formal_evidence(raw_row, venue, year)
+    if formal_status != FORMAL_STATUS_CVF:
+        reject("CVF page/BibTeX did not confirm target CVPR Main Proceedings and year.")
+        return None
+
+    accepted_title_norm = normalize_title(accepted_title)
+    cvf_title_norm = normalize_title(detail["title"])
+    accepted_author_norm = normalize_authors(accepted_authors)
+    cvf_author_norm = normalize_authors(detail["authors"])
+    title_score = _similarity(accepted_title_norm, cvf_title_norm)
+    author_score = _similarity(accepted_author_norm, cvf_author_norm)
+    exact_title = bool(accepted_title_norm and accepted_title_norm == cvf_title_norm)
+    unique_exact_authors = bool(
+        accepted_author_norm
+        and accepted_author_norm == cvf_author_norm
+        and accepted_author_counts.get(accepted_author_norm, 0) == 1
+    )
+    identity_resolved = bool(
+        (exact_title and accepted_author_norm and author_score >= 0.65)
+        or (title_score >= 0.35 and unique_exact_authors)
+    )
+    if not identity_resolved:
+        reject(
+            f"identity not conservatively resolved (title_similarity={title_score:.6f}, "
+            f"author_similarity={author_score:.6f})."
+        )
+        return None
+
+    paper_id = clean_cell(raw_row["Paper_ID（论文编号）"])
+    evidence = (
+        "Direct CVF Open Access page and BibTeX confirm CVPR Main Proceedings/year; "
+        "identity resolved against official Program record"
+    )
+    record.update(
+        {
+            "CVF_Title": detail["title"],
+            "CVF_Normalized_Title": cvf_title_norm,
+            "Similarity": f"{title_score:.6f}",
+            "Author_Similarity": f"{author_score:.6f}",
+            "CVF_URL": resolution_url,
+            "Formal_Publication_Status": FORMAL_STATUS_CVF,
+            "Formal_Publication_Evidence": evidence,
+            "Formal_Publication_URL": resolution_url,
+            "Paper_ID": paper_id,
+            "Resolution": "INCLUDED_FORMAL_CVF_DIRECT_SUPPLEMENT",
+            "Notes": (
+                "Human resolution supplied only the candidate official URL; the program re-fetched "
+                "and verified CVF metadata, BibTeX, venue/year, title, and author identity."
+            ),
+        }
+    )
+    raw_row.update(
+        {
+            "Corpus_Source": "CVF_DIRECT_SUPPLEMENT",
+            "Formal_Publication_Status": FORMAL_STATUS_CVF,
+            "Formal_Publication_Evidence": evidence,
+            "Formal_Publication_URL": resolution_url,
+            "Original_CVF_Present": "FALSE",
+            "Official_Accepted_Present": "TRUE",
+            "Corpus_Audit_Notes": clean_cell(resolution.get("Resolution_Note"))
+            or "Added after direct official CVF verification.",
+        }
+    )
+    return raw_row
+
+
 def build_formal_corpus(
     cvf: pd.DataFrame,
     accepted_presence: dict[str, bool],
@@ -512,7 +685,10 @@ def build_formal_corpus(
         )
         rows.append(row)
     for supplemental in supplemental_rows:
-        if clean_cell(supplemental.get("Formal_Publication_Status")) == FORMAL_STATUS_IEEE:
+        if clean_cell(supplemental.get("Formal_Publication_Status")) in {
+            FORMAL_STATUS_CVF,
+            FORMAL_STATUS_IEEE,
+        }:
             rows.append({column: clean_cell(supplemental.get(column)) for column in FORMAL_CORPUS_COLUMNS})
     return pd.DataFrame(rows).reindex(columns=FORMAL_CORPUS_COLUMNS, fill_value="")
 
@@ -548,6 +724,7 @@ def _write_compact_report(
             f"- Accepted Only: {counts['accepted_only']}",
             f"- CVF Only: {counts['cvf_only']}",
             f"- Formal CVF Confirmed: {counts['formal_cvf_confirmed']}",
+            f"- Formal CVF Direct Supplemental: {counts['formal_cvf_direct_supplemental']}",
             f"- Formal IEEE Supplemental: {counts['formal_ieee_supplemental']}",
             f"- Not Formally Published: {counts['not_formally_published']}",
             f"- Non-target Official Track: {counts['non_target_official_track']}",
@@ -607,6 +784,28 @@ def audit_corpus(
 
     records, accepted_presence, structural_error = _match_records(cvf, official, venue, year)
     supplemental_rows: list[dict[str, object]] = []
+    resolution_rows = _read_formal_verification_resolutions(
+        paths.formal_verification_resolutions_csv
+    )
+    resolutions_by_title: dict[str, list[dict[str, str]]] = {}
+    resolution_url_counts: dict[str, int] = {}
+    for resolution in resolution_rows:
+        title_key = normalize_title(resolution.get("Accepted_Title", ""))
+        resolutions_by_title.setdefault(title_key, []).append(resolution)
+        resolution_url = clean_cell(resolution.get("Resolution_URL"))
+        if resolution_url:
+            resolution_url_counts[resolution_url] = resolution_url_counts.get(resolution_url, 0) + 1
+    if any(len(rows) > 1 for rows in resolutions_by_title.values()) or any(
+        count > 1 for count in resolution_url_counts.values()
+    ):
+        structural_error = True
+
+    accepted_author_counts: dict[str, int] = {}
+    for paper in official:
+        author_key = normalize_authors(paper.authors)
+        if author_key:
+            accepted_author_counts[author_key] = accepted_author_counts.get(author_key, 0) + 1
+    original_cvf_urls = set(cvf["Official_URL（官方论文页面）"].map(clean_cell))
     accepted_only_records = [
         record for record in records if record["Audit_Status"] == AUDIT_ACCEPTED_ONLY
     ]
@@ -637,6 +836,42 @@ def audit_corpus(
             record["Audit_Status"] == AUDIT_ACCEPTED_ONLY
             and record["Formal_Publication_Status"] == FORMAL_STATUS_UNRESOLVED
         ):
+            title_key = normalize_title(record.get("Accepted_Title", ""))
+            matching_resolutions = resolutions_by_title.get(title_key, [])
+            direct_supplemental: dict[str, object] | None = None
+            if len(matching_resolutions) > 1:
+                record["Resolution"] = "ERROR_DUPLICATE_RESOLUTION"
+                record["Notes"] = clean_cell(record.get("Notes")) + (
+                    " Duplicate Formal_Verification_Resolutions rows for this Accepted_Title."
+                )
+            elif len(matching_resolutions) == 1:
+                resolution = matching_resolutions[0]
+                resolution_url = clean_cell(resolution.get("Resolution_URL"))
+                if resolution_url_counts.get(resolution_url, 0) > 1:
+                    record["Resolution"] = "ERROR_DUPLICATE_RESOLUTION_URL"
+                    record["Notes"] = clean_cell(record.get("Notes")) + (
+                        " Resolution_URL is duplicated across multiple Program records."
+                    )
+                elif resolution_url in original_cvf_urls:
+                    record["Resolution"] = "CVF_DIRECT_REJECTED"
+                    record["Notes"] = clean_cell(record.get("Notes")) + (
+                        " Resolution_URL already exists in raw All_Papers and cannot be added as a supplement."
+                    )
+                else:
+                    direct_supplemental = _attempt_cvf_direct_verification(
+                        client,
+                        paths,
+                        record,
+                        resolution,
+                        venue,
+                        year,
+                        force,
+                        accepted_author_counts=accepted_author_counts,
+                    )
+                    if direct_supplemental is not None:
+                        supplemental_rows.append(direct_supplemental)
+            if direct_supplemental is not None:
+                continue
             supplemental = _attempt_ieee_verification(
                 client, paths, record, venue, year, force
             )
@@ -669,6 +904,9 @@ def audit_corpus(
         "accepted_only": int(count_status.get(AUDIT_ACCEPTED_ONLY, 0)),
         "cvf_only": int(count_status.get(AUDIT_CVF_ONLY, 0)),
         "formal_cvf_confirmed": int((formal["Formal_Publication_Status"] == FORMAL_STATUS_CVF).sum()),
+        "formal_cvf_direct_supplemental": int(
+            (formal["Corpus_Source"] == "CVF_DIRECT_SUPPLEMENT").sum()
+        ),
         "formal_ieee_supplemental": int((formal["Formal_Publication_Status"] == FORMAL_STATUS_IEEE).sum()),
         "not_formally_published": int(count_formal.get(FORMAL_STATUS_NOT, 0)),
         "non_target_official_track": int(count_formal.get(FORMAL_STATUS_NON_TARGET, 0)),

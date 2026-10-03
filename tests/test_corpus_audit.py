@@ -18,6 +18,8 @@ from src.corpus_audit import (
     FORMAL_STATUS_CVF,
     FORMAL_STATUS_IEEE,
     FORMAL_STATUS_NOT,
+    RESOLUTION_COLUMNS,
+    _attempt_cvf_direct_verification,
     _match_records,
     audit_corpus,
     build_formal_corpus,
@@ -82,6 +84,63 @@ def _write_verified_gate(paths: ProjectPaths, frame: pd.DataFrame) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _cvf_direct_html(
+    title: str,
+    *,
+    year: int = 2025,
+    authors: tuple[str, ...] = ("Alice Smith", "Bob Jones"),
+    booktitle: str = (
+        "Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)"
+    ),
+) -> str:
+    author_meta = "".join(
+        f'<meta name="citation_author" content="{author}">' for author in authors
+    )
+    return f"""
+    <html><head>
+      <meta name="citation_title" content="{title}">
+      {author_meta}
+      <meta name="citation_pdf_url" content="https://openaccess.thecvf.com/content/CVPR{year}/papers/direct.pdf">
+    </head><body>
+      <div id="abstract">A complete official abstract.</div>
+      <div class="bibref">@InProceedings{{direct,
+        booktitle = {{{booktitle}}},
+        year = {{{year}}}
+      }}</div>
+    </body></html>
+    """
+
+
+class _DirectClient:
+    def __init__(self, html: str):
+        self.html = html
+        self.urls: list[str] = []
+
+    def get_text(self, url, cache_path, force=False):
+        self.urls.append(url)
+        return self.html, "FIXTURE"
+
+
+def _direct_record(title: str, authors: str = "Alice Smith ⋅ Bob Jones") -> dict[str, object]:
+    return {
+        "Accepted_Title": title,
+        "Authors": authors,
+        "Notes": "Accepted/program discovery alone is insufficient.",
+        "Formal_Publication_Status": "UNRESOLVED",
+        "Resolution": "FORMAL_VERIFICATION_REQUIRED",
+    }
+
+
+def _direct_resolution(title: str, url: str, authors: str = "Alice Smith ⋅ Bob Jones") -> dict[str, str]:
+    return {
+        "Accepted_Title": title,
+        "Accepted_Authors": authors,
+        "Resolution_Source": "CVF_DIRECT",
+        "Resolution_URL": url,
+        "Resolution_Note": "Human-discovered official page.",
+    }
 
 
 def test_official_accepted_parser_extracts_title_and_authors():
@@ -242,6 +301,195 @@ def test_audit_verified_with_complete_exact_fixture(monkeypatch, tmp_path):
     assert result.status == COMPLETENESS_VERIFIED
     assert result.counts["final_formal_corpus"] == 1
     assert paths.formal_corpus_csv.exists() and paths.formal_corpus_xlsx.exists()
+
+
+def test_missing_resolution_file_preserves_existing_audit_behavior(monkeypatch, tmp_path):
+    paths = ProjectPaths(tmp_path, "CVPR", 2025)
+    write_csv([_raw_row("P1", "Formal Paper")], paths.raw_csv, RAW_COLUMNS)
+    write_csv([], paths.crawl_exception_csv, ["error"])
+    monkeypatch.setattr(
+        audit_module,
+        "fetch_official_discovery_papers",
+        lambda *args, **kwargs: ([_accepted("Formal Paper")], "OFFICIAL_ACCEPTED_PAGE"),
+    )
+
+    result = audit_corpus(tmp_path, "CVPR", 2025, Path("config/source_config.yaml"))
+
+    assert not paths.formal_verification_resolutions_csv.exists()
+    assert result.status == COMPLETENESS_VERIFIED
+    assert result.counts["formal_cvf_direct_supplemental"] == 0
+
+
+def test_cvf_direct_exact_title_is_verified(tmp_path):
+    paths = ProjectPaths(tmp_path, "CVPR", 2025)
+    url = "https://openaccess.thecvf.com/content/CVPR2025/html/Direct_CVPR_2025_paper.html"
+    record = _direct_record("Formal Direct Paper")
+    client = _DirectClient(_cvf_direct_html("Formal Direct Paper"))
+
+    supplemental = _attempt_cvf_direct_verification(
+        client,
+        paths,
+        record,
+        _direct_resolution("Formal Direct Paper", url),
+        "CVPR",
+        2025,
+        False,
+        accepted_author_counts={normalize_authors(record["Authors"]): 1},
+    )
+
+    assert supplemental is not None
+    assert supplemental["Corpus_Source"] == "CVF_DIRECT_SUPPLEMENT"
+    assert record["Resolution"] == "INCLUDED_FORMAL_CVF_DIRECT_SUPPLEMENT"
+    assert client.urls == [url]
+
+
+def test_cvf_direct_title_variant_requires_unique_matching_authors(tmp_path):
+    paths = ProjectPaths(tmp_path, "CVPR", 2025)
+    url = "https://openaccess.thecvf.com/content/CVPR2025/html/FLOW_CVPR_2025_paper.html"
+    program_title = "FLOW: Feature-Level Optimal Warping for Generalized Remote Physiological Measurement"
+    cvf_title = "FLOW: Optimal Transport-Driven Feature Warping for Generalized Remote Physiological Measurement"
+    record = _direct_record(program_title)
+
+    supplemental = _attempt_cvf_direct_verification(
+        _DirectClient(_cvf_direct_html(cvf_title)),
+        paths,
+        record,
+        _direct_resolution(program_title, url),
+        "CVPR",
+        2025,
+        False,
+        accepted_author_counts={normalize_authors(record["Authors"]): 1},
+    )
+
+    assert supplemental is not None
+    assert supplemental["Title（标题）"] == cvf_title
+    assert float(record["Similarity"]) < 1.0
+
+
+def test_cvf_direct_fuzzy_title_with_wrong_authors_stays_unresolved(tmp_path):
+    paths = ProjectPaths(tmp_path, "CVPR", 2025)
+    url = "https://openaccess.thecvf.com/content/CVPR2025/html/Wrong_CVPR_2025_paper.html"
+    record = _direct_record("A Program Paper")
+
+    supplemental = _attempt_cvf_direct_verification(
+        _DirectClient(_cvf_direct_html("A Changed Final Paper", authors=("Other Author",))),
+        paths,
+        record,
+        _direct_resolution("A Program Paper", url),
+        "CVPR",
+        2025,
+        False,
+        accepted_author_counts={normalize_authors(record["Authors"]): 1},
+    )
+
+    assert supplemental is None
+    assert record["Resolution"] == "CVF_DIRECT_REJECTED"
+    assert record["Formal_Publication_Status"] == "UNRESOLVED"
+
+
+@pytest.mark.parametrize(
+    ("url", "html"),
+    [
+        (
+            "https://openaccess.thecvf.com/content/CVPR2025/html/Wrong_Year.html",
+            _cvf_direct_html("Formal Direct Paper", year=2024),
+        ),
+        (
+            "https://openaccess.thecvf.com/content/CVPR2025/html/Wrong_Booktitle.html",
+            _cvf_direct_html("Formal Direct Paper", booktitle="Proceedings of Another Conference"),
+        ),
+        (
+            "https://example.com/content/CVPR2025/html/Not_Official.html",
+            _cvf_direct_html("Formal Direct Paper"),
+        ),
+    ],
+)
+def test_cvf_direct_rejects_wrong_year_booktitle_or_host(tmp_path, url, html):
+    paths = ProjectPaths(tmp_path, "CVPR", 2025)
+    record = _direct_record("Formal Direct Paper")
+
+    supplemental = _attempt_cvf_direct_verification(
+        _DirectClient(html),
+        paths,
+        record,
+        _direct_resolution("Formal Direct Paper", url),
+        "CVPR",
+        2025,
+        False,
+        accepted_author_counts={normalize_authors(record["Authors"]): 1},
+    )
+
+    assert supplemental is None
+    assert record["Resolution"] == "CVF_DIRECT_REJECTED"
+
+
+def test_audit_adds_verified_cvf_direct_without_rewriting_raw(monkeypatch, tmp_path):
+    paths = ProjectPaths(tmp_path, "CVPR", 2025)
+    write_csv([_raw_row("P1", "Existing Formal")], paths.raw_csv, RAW_COLUMNS)
+    write_csv([], paths.crawl_exception_csv, ["error"])
+    raw_hash_before = file_sha256(paths.raw_csv)
+    direct_title = "Direct Supplemental"
+    direct_url = "https://openaccess.thecvf.com/content/CVPR2025/html/Direct_CVPR_2025_paper.html"
+    write_csv(
+        [_direct_resolution(direct_title, direct_url)],
+        paths.formal_verification_resolutions_csv,
+        RESOLUTION_COLUMNS,
+    )
+    monkeypatch.setattr(
+        audit_module,
+        "fetch_official_discovery_papers",
+        lambda *args, **kwargs: (
+            [_accepted("Existing Formal"), _accepted(direct_title)],
+            "OFFICIAL_ACCEPTED_PAGE",
+        ),
+    )
+    monkeypatch.setattr(audit_module, "fetch_cvf_findings_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(audit_module, "_attempt_ieee_verification", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        audit_module.CachedHttpClient,
+        "get_text",
+        lambda self, url, cache_path, force=False: (_cvf_direct_html(direct_title), "FIXTURE"),
+    )
+
+    result = audit_corpus(tmp_path, "CVPR", 2025, Path("config/source_config.yaml"))
+
+    assert result.status == COMPLETENESS_VERIFIED
+    assert len(result.formal_corpus) == 2
+    assert result.counts["formal_cvf_direct_supplemental"] == 1
+    assert "CVF_DIRECT_SUPPLEMENT" in set(result.formal_corpus["Corpus_Source"])
+    assert file_sha256(paths.raw_csv) == raw_hash_before
+
+
+def test_duplicate_cvf_direct_resolution_url_is_rejected_and_reported(monkeypatch, tmp_path):
+    paths = ProjectPaths(tmp_path, "CVPR", 2025)
+    write_csv([_raw_row("P1", "Existing Formal")], paths.raw_csv, RAW_COLUMNS)
+    write_csv([], paths.crawl_exception_csv, ["error"])
+    duplicated_url = "https://openaccess.thecvf.com/content/CVPR2025/html/Duplicate.html"
+    write_csv(
+        [
+            _direct_resolution("Direct One", duplicated_url),
+            _direct_resolution("Direct Two", duplicated_url),
+        ],
+        paths.formal_verification_resolutions_csv,
+        RESOLUTION_COLUMNS,
+    )
+    monkeypatch.setattr(
+        audit_module,
+        "fetch_official_discovery_papers",
+        lambda *args, **kwargs: (
+            [_accepted("Existing Formal"), _accepted("Direct One"), _accepted("Direct Two")],
+            "OFFICIAL_ACCEPTED_PAGE",
+        ),
+    )
+    monkeypatch.setattr(audit_module, "fetch_cvf_findings_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(audit_module, "_attempt_ieee_verification", lambda *args, **kwargs: None)
+
+    result = audit_corpus(tmp_path, "CVPR", 2025, Path("config/source_config.yaml"))
+
+    assert result.status == "ERROR"
+    assert result.counts["formal_cvf_direct_supplemental"] == 0
+    duplicate_records = result.audit[result.audit["Accepted_Title"].isin(["Direct One", "Direct Two"])]
+    assert set(duplicate_records["Resolution"]) == {"ERROR_DUPLICATE_RESOLUTION_URL"}
 
 
 def test_unresolved_and_metadata_incomplete_trigger_review(monkeypatch, tmp_path):

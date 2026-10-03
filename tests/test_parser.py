@@ -1,4 +1,4 @@
-from src.parser import parse_cvf_detail, parse_cvf_listing, parse_cvf_workshop_index
+from src.parser import parse_cvf_day_links, parse_cvf_detail, parse_cvf_listing, parse_cvf_workshop_index
 
 
 def test_parse_listing_filters_track_and_deduplicates():
@@ -47,3 +47,23 @@ def test_parse_workshop_index():
     assert len(workshops) == 1
     assert workshops[0].name == "Efficient On-Device Generation"
     assert workshops[0].listing_url.endswith("/CVPR2026_workshops/EDGE")
+
+
+def test_parse_day_links_accepts_only_same_cvf_year_and_deduplicates():
+    html = """
+    <a href="/CVPR2026?day=2026-06-05">day one</a>
+    <a href="https://openaccess.thecvf.com/CVPR2026?day=2026-06-05">duplicate</a>
+    <a href="/CVPR2026?day=2026-06-06">day two</a>
+    <a href="/CVPR2026?day=all">all</a>
+    <a href="/CVPR2025?day=2025-06-05">wrong venue-year</a>
+    <a href="/CVPR2026?day=2025-06-05">wrong calendar year</a>
+    <a href="https://example.com/CVPR2026?day=2026-06-07">wrong host</a>
+    <a href="/CVPR2026?day=not-a-date">invalid</a>
+    """
+
+    links = parse_cvf_day_links(html, "https://openaccess.thecvf.com", "CVPR", 2026)
+
+    assert links == [
+        "https://openaccess.thecvf.com/CVPR2026?day=2026-06-05",
+        "https://openaccess.thecvf.com/CVPR2026?day=2026-06-06",
+    ]
