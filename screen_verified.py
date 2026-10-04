@@ -21,7 +21,7 @@ from src.utils import (
 
 RULES = Path(__file__).resolve().parent / 'config' / 'screening_rules_v1_2.yaml'
 RULES_SHA256 = '4a94a8346cce3ab8dae5153ba9c07041371f783902d0bdb55becbc0d9c0cf514'
-SUPPORTED_VENUES = ('ICML', 'ICLR', 'AAAI', 'ECCV')
+SUPPORTED_VENUES = ('ICML', 'ICLR', 'AAAI', 'ECCV', 'TPAMI')
 MAPPING = dict(zip(
     ['Paper_ID', 'Title', 'Authors', 'Abstract', 'Venue', 'Year', 'Track', 'Official_URL', 'PDF_URL'],
     ['Paper_ID（论文编号）', 'Title（标题）', 'Authors（作者）', 'Abstract（摘要）',
@@ -34,7 +34,7 @@ def venue_year_path(library_root, venue, year):
     """Explicit root; no default production destination and no path traversal."""
     allowed_years = (2024, 2026) if venue == 'ECCV' else (2024, 2025, 2026)
     if venue not in SUPPORTED_VENUES or type(year) is not int or year not in allowed_years:
-        raise ValueError('Unsupported Venue-Year (TPAMI is not implemented)')
+        raise ValueError('Unsupported Venue-Year')
     root = Path(library_root).resolve()
     base = root / venue / str(year)
     # Reject linked destinations that escape or merge Venue-Year directories.
@@ -76,6 +76,11 @@ def verified_corpus(base, venue, year):
         raise ValueError('Corpus Venue-Year mismatch')
     if type(audit.get('publisher_count')) is not int or len(frame) != audit['publisher_count']:
         raise ValueError('Publisher count mismatch')
+    if venue == 'TPAMI':
+        from tpami_policy import admission, corpus_issues
+        admission(base)
+        if corpus_issues(base, frame.to_dict('records')):
+            raise ValueError('TPAMI final-issue/DOI cross-year gate failed')
     return frame, corpus_sha
 
 

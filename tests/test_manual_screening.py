@@ -85,7 +85,7 @@ def test_changed_rules_is_rejected(corpus, monkeypatch):
         screening.screen('ICML', 2024, library_root=root)
 
 
-@pytest.mark.parametrize('venue', ['CVPR', 'TPAMI', '../ICML'])
+@pytest.mark.parametrize('venue', ['CVPR', 'UNKNOWN', '../ICML'])
 def test_unsupported_venue_has_no_io(tmp_path, venue):
     with pytest.raises(ValueError):
         screening.screen(venue, 2025, library_root=tmp_path, write=True)

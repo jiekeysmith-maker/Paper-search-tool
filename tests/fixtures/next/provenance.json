@@ -1,0 +1,16 @@
+[
+  {
+    "file": "eccv_part_xviii.html",
+    "url": "https://link.springer.com/book/10.1007/978-3-031-72649-1",
+    "source_sha256": "b36e8d4629914cd486da43d95c231b72354114ffc87817db16e8166a493edf8e",
+    "fixture_sha256": "6ba2df141f8b1239159b118064193b9853fa3b223e590aa4aec92caf796f809a",
+    "transformation": "Selected original HTML elements; no invented content"
+  },
+  {
+    "file": "aaai_robots_section.html",
+    "url": "https://ojs.aaai.org/index.php/AAAI/issue/view/584",
+    "source_sha256": "6899ec19993b6e92a70053bf3d706ef43ba3805cbdc9eca9c9aa5b642ed78733",
+    "fixture_sha256": "0f1158c7d99f751913139e6f593bb48379687c2367f3cca05d915203f6d38737",
+    "transformation": "Selected original HTML elements; no invented content"
+  }
+]

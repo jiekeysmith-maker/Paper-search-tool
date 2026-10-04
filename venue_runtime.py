@@ -82,6 +82,7 @@ HOSTS = {
     'ICLR': {'proceedings.iclr.cc', 'iclr.cc'},
     'AAAI': {'aaai.org', 'www.aaai.org', 'ojs.aaai.org'},
     'ECCV': {'link.springer.com', 'www.ecva.net', 'ecva.net', 'eccv.ecva.net'},
+    'TPAMI': {'ieeexplore.ieee.org', 'www.computer.org'},
 }
 
 
@@ -103,6 +104,8 @@ class FetchCache:
             raise ValueError(f'Non-official metadata URL: {url}')
         if p.path.lower().endswith('.pdf') or '/article/download/' in p.path:
             raise ValueError('PDF/download requests are forbidden')
+        if self.venue == 'TPAMI' and (p.path.startswith(('/rest', '/ielx')) or p.path.startswith('/api/')):
+            raise ValueError('Restricted IEEE endpoint forbidden')
 
     def paths(self, url):
         key = sha256(url.encode()).hexdigest()

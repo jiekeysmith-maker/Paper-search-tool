@@ -148,47 +148,8 @@ def aaai_issue_links(html, url, year):
 
 
 def aaai_oai(cache, year, target_issues):
-    """Independent article enumeration through the publisher's OAI-PMH export.
-
-    Datestamps are modification dates, so no publication-year date filter is used.
-    Unknown source metadata fails closed instead of dropping potentially relevant papers.
-    """
-    root = 'https://ojs.aaai.org/index.php/AAAI/oai'
-    url = root + '?verb=ListRecords&metadataPrefix=oai_dc'
-    seen, rows = set(), []
-    ns = {'o': 'http://www.openarchives.org/OAI/2.0/', 'dc': 'http://purl.org/dc/elements/1.1/'}
-    while url:
-        if url in seen or len(seen) >= 10000:
-            raise ValueError('OAI pagination loop/limit')
-        seen.add(url)
-        tree = ET.fromstring(cache.get(url))
-        if tree.find('o:error', ns) is not None:
-            raise ValueError('OAI export error')
-        records = tree.findall('.//o:record', ns)
-        if not records:
-            raise ValueError('Empty OAI page')
-        for record in records:
-            header = record.find('o:header', ns)
-            if header is not None and header.get('status') == 'deleted':
-                continue
-            sources = [x.text or '' for x in record.findall('.//dc:source', ns)]
-            english = next((s for s in sources if 'Proceedings of the AAAI Conference on Artificial Intelligence' in s), '')
-            scope = re.search(r'Vol\.?\s*(\d+)\D+No\.?\s*(\d+)', english, re.I)
-            if not scope:
-                raise ValueError('OAI source cannot establish volume/issue scope')
-            if int(scope[1]) != year - 1986 or int(scope[2]) not in target_issues:
-                continue
-            ids = [x.text or '' for x in record.findall('.//dc:identifier', ns)]
-            article = next((u for u in ids if re.fullmatch(r'https://ojs.aaai.org/index.php/AAAI/article/view/\d+', u)), '')
-            if not article:
-                raise ValueError('OAI missing stable article URL')
-            titles = [x.text or '' for x in record.findall('.//dc:title', ns)]
-            rows.append(dict(Title=titles[0] if titles else '', Official_URL=article,
-                             Authors='; '.join(x.text or '' for x in record.findall('.//dc:creator', ns)),
-                             Issue=int(scope[2]), Evidence_URL=url))
-        token = tree.find('.//o:resumptionToken', ns)
-        url = root + '?' + urlencode({'verb': 'ListRecords', 'resumptionToken': token.text}) if token is not None and token.text else None
-    return rows
+    from aaai_pipeline import enumerate_oai
+    return enumerate_oai(cache, year, target_issues)
 
 
 def aaai(cache, collection):
@@ -235,7 +196,17 @@ def aaai(cache, collection):
         collection.evidence_complete = primary.keys() == independent_issues.keys()
     except (ValueError, ET.ParseError) as exc:
         collection.issue('Independent OAI enumeration failed: ' + str(exc))
-    collection.details(lambda html, row: adapter.detail(html, row['Official_URL'], year, int(row['Volume']), int(row['Issue']), utc()))
+        collection.save()
+        return
+    from aaai_pipeline import from_oai
+    by_url = {r['Official_URL']: r for r in collection.program}
+    missing = []
+    for row in collection.publisher:
+        try:
+            collection.corpus.append(from_oai(row, by_url[row['Official_URL']], year))
+        except (KeyError, ValueError):
+            missing.append(row)
+    collection.details(lambda html, row: adapter.detail(html, row['Official_URL'], year, int(row['Volume']), int(row['Issue']), utc()), missing)
 
 
 def ecva_index(html, year):
@@ -304,8 +275,12 @@ def eccv(cache, collection):
         queue.extend(urljoin(url, a['href']) for a in soup.select('.c-pagination a[href], a[rel="next"]'))
     if not roots:
         raise ValueError('No official Springer target-year book list')
-    collection.program = ecva_index(cache.get('https://www.ecva.net/papers.php'), year)
-    books, seen, queue = {}, set(), sorted(roots)
+    try:
+        collection.program = ecva_index(cache.get('https://www.ecva.net/papers.php'), year)
+    except ValueError as exc:
+        collection.issue('Independent ECVA enumeration unavailable: ' + str(exc))
+    books, seen, queue, failures = {}, set(), sorted(roots), []
+    access_blocked = False
     while queue:
         url = queue.pop(0)
         url = re.sub(r'\?page=1$', '', url)
@@ -314,7 +289,17 @@ def eccv(cache, collection):
         if len(seen) >= 2000:
             raise ValueError('Springer book pagination limit')
         seen.add(url)
-        book = adapter.book(cache.get(url), url, year)
+        try:
+            if access_blocked and not all(p.exists() for p in cache.paths(url)):
+                raise ValueError('NOT_REQUESTED_AFTER_SPRINGER_AUTH_REDIRECT; manual access review required')
+            book = adapter.book(cache.get(url), url, year)
+        except Exception as exc:
+            if 'idp.springer.com/auth/' in str(exc):
+                access_blocked = True
+            failures.append(dict(url=url, error=repr(exc)))
+            collection.issue('Springer TOC unavailable: '+repr(exc), Official_URL=url)
+            write_json(cache.base / 'raw' / 'Volume_Failures.json', failures)
+            continue
         doi = book['Book_DOI']
         previous = books.get(doi)
         if previous:
@@ -355,8 +340,14 @@ def eccv(cache, collection):
         # TOC authors may be truncated. Reconciliation uses full chapter citation authors.
         row['Authors'] = result['Authors']
         return result
-    collection.details(detail)
-    collection.evidence_complete = True
+    collection.save()
+    # Preserve all accessible TOCs, but do not request thousands of details when
+    # an access restriction has already prevented proving the publisher inventory.
+    if not failures:
+        collection.details(detail)
+    collection.evidence_complete = bool(collection.program) and not failures
 
 
-PIPELINES = {'ICML': icml, 'ICLR': iclr, 'AAAI': aaai, 'ECCV': eccv}
+from tpami_pipeline import tpami
+
+PIPELINES = {'ICML': icml, 'ICLR': iclr, 'AAAI': aaai, 'ECCV': eccv, 'TPAMI': tpami}

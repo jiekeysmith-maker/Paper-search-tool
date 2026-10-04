@@ -1,6 +1,6 @@
 """Springer ECCV books/chapters; conference year differs from publication date."""
 import re,json
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, parse_qs, urlunparse
 from bs4 import BeautifulSoup
 
 class SpringerECCVAdapter:
@@ -8,7 +8,7 @@ class SpringerECCVAdapter:
         s=BeautifulSoup(html,'html.parser');title=s.select_one('meta[name="title"]');doi=s.select_one('meta[name="doi"]')
         if not title or title['content']!=f'Computer Vision – ECCV {year}' or not doi:raise ValueError('Wrong book conference/year/track')
         text=s.get_text(' ',strip=True)
-        part=re.search(r'Proceedings, Part ([IVXLCDM]+)',text)
+        part=re.search(r'Proceedings,\s+Part\s+([IVXLCDM]+)',text)
         lncs=re.search(r'LNCS, volume (\d+)',text)
         count=s.select_one('#toc')
         count=re.search(r'Table of contents \((\d+) papers\)',count.get_text(' ',strip=True)) if count else None
@@ -22,7 +22,15 @@ class SpringerECCVAdapter:
             authors=container.select_one('.app-author-list') if container else None
             chapters.append(dict(Title=a.get_text(' ',strip=True),Authors=authors.get_text(' ',strip=True) if authors else '',Official_URL=u,Book_DOI=doi['content']))
         if not chapters or len({r['Official_URL'] for r in chapters})!=len(chapters):raise ValueError('Empty/duplicate table of contents')
-        pages=sorted({urljoin(url,a['href']).split('#')[0] for a in s.select('a[href]') if '?page=' in a['href'] and '/book/'+doi['content'] in a['href']})
+        pages=set()
+        for a in s.select('a[href]'):
+            p=urlparse(urljoin(url,a['href']))
+            q=parse_qs(p.query)
+            if (p.scheme=='https' and p.hostname=='link.springer.com'
+                    and p.path=='/book/'+doi['content'] and set(q)=={'page'}
+                    and len(q['page'])==1 and q['page'][0].isdigit()):
+                pages.add(urlunparse(p._replace(fragment='')))
+        pages=sorted(pages)
         volumes=[urljoin(url,a['href']) for a in s.select('.c-book-other-volumes__item a') if a.get_text(' ',strip=True)==title['content']]
         return dict(Book_DOI=doi['content'],Part=part[1],LNCS_Volume=lncs[1],Declared_Chapter_Count=int(count[1]),Chapters=chapters,Pages=pages,Other_Volumes=volumes)
 

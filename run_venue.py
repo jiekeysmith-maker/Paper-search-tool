@@ -13,7 +13,7 @@ from venue_pipelines import Collection, PIPELINES
 from venue_audit import audit
 
 SUPPORTED = {'ICML': (2024, 2025, 2026), 'ICLR': (2024, 2025, 2026),
-             'AAAI': (2024, 2025, 2026), 'ECCV': (2024, 2026)}
+             'AAAI': (2024, 2025, 2026), 'ECCV': (2024, 2026), 'TPAMI': (2024, 2025, 2026)}
 PRODUCTION = Path(r'D:\_Knowledge Distillation\Paper Library')
 
 
@@ -50,6 +50,9 @@ def run_year(venue, year, library_root, *, pipeline=None, cache_factory=FetchCac
     run_id = utc().replace(':', '').replace('+', '_') + '-' + uuid.uuid4().hex[:8]
     # Lock acquisition failure must not write an error into the other process's job.
     with job_lock(base, venue, year):
+        if venue == 'TPAMI':
+            from tpami_policy import admission
+            admission(base)
         report = base / 'reports' / (run_id + '.json')
         collection = None
         cache = None
@@ -86,7 +89,10 @@ def run_year(venue, year, library_root, *, pipeline=None, cache_factory=FetchCac
             if collection is not None and not (base / 'raw' / 'Formal_Proceedings_Corpus.csv').exists():
                 collection.issue(repr(exc))
                 collection.save()
-                write_json(base / 'raw' / 'Audit_Summary.json', dict(venue=venue, year=year, status=result['status'], unresolved_count=max(1, len(collection.issues))))
+                failed = audit(base, venue, year, collection.publisher, collection.corpus, collection.program,
+                               evidence_complete=False, issues=collection.issues, excluded=collection.excluded)
+                failed['status'] = result['status']
+                write_json(base / 'raw' / 'Audit_Summary.json', failed)
             if isinstance(exc, KeyboardInterrupt):
                 write_json(report, result)
                 write_json(base / 'runtime' / 'Progress.json', result)

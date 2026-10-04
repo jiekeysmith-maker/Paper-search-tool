@@ -19,11 +19,20 @@ class AAAIOJSAdapter:
             h=section.find('h2',recursive=False)
             if not h:continue
             track=h.get_text(' ',strip=True)
+            scope=self.classify_scope(track)
+            # The official 2024 issue introduction explicitly names this technical
+            # track, while its section heading uses the abbreviated spelling.
+            scope_evidence=''
+            if (year==2024 and str(volume)=='38' and str(issue)=='9'
+                    and track=='Intelligent Robots (ROB)'
+                    and 'AAAI Technical Track on Intelligent Robots' in soup.get_text(' ',strip=True)):
+                scope='TARGET_MAIN'
+                scope_evidence=url+'; issue introduction: AAAI Technical Track on Intelligent Robots'
             for item in section.select('.obj_article_summary'):
                 a=item.select_one('h3.title a');authors=item.select_one('.authors')
                 if not a or not authors:raise ValueError('Missing article identity')
                 native=self.identity(a['href'])
-                rows.append(dict(Title=a.get_text(' ',strip=True),Authors=authors.get_text(' ',strip=True),Official_URL=a['href'],Native_Publisher_ID=native,Track=track,Scope=self.classify_scope(track),Issue_URL=url,Volume=str(volume),Issue=str(issue)))
+                rows.append(dict(Title=a.get_text(' ',strip=True),Authors=authors.get_text(' ',strip=True),Official_URL=a['href'],Native_Publisher_ID=native,Track=track,Scope=scope,Scope_Evidence=scope_evidence,Issue_URL=url,Volume=str(volume),Issue=str(issue)))
         if not rows or len({r['Official_URL'] for r in rows})!=len(rows):raise ValueError('Empty or duplicated issue')
         # Independent count catches article summaries not assigned to any parsed section.
         if len(rows)!=len(soup.select('.obj_article_summary')):raise ValueError('Unparsed section')

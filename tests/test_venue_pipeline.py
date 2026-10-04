@@ -181,16 +181,16 @@ def test_bad_registry_hash_rejected(tmp_path):
         FetchCache(tmp_path / 'job', 'ICML', 2025).import_registry(registry, {'https://icml.cc/a'})
 
 
-@pytest.mark.parametrize('venue,years', [('ECCV', [2025]), ('TPAMI', [2024]), ('CVPR', [2025]), ('ICLR', [2024, 2024])])
+@pytest.mark.parametrize('venue,years', [('ECCV', [2025]), ('TPAMI', [2023]), ('CVPR', [2025]), ('ICLR', [2024, 2024])])
 def test_invalid_requests_no_io(tmp_path, venue, years):
     with pytest.raises(ValueError):
         runner.run_years(venue, years, tmp_path)
     assert not list(tmp_path.iterdir())
 
 
-def test_tpami_explicit_not_implemented():
+def test_unknown_explicit_not_implemented():
     with pytest.raises(ValueError, match='NOT_IMPLEMENTED'):
-        runner.validate_request('TPAMI', [2025])
+        runner.validate_request('UNKNOWN', [2025])
 
 
 def test_protected_icml2024_has_no_io(tmp_path, monkeypatch):

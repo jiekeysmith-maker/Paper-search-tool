@@ -107,6 +107,9 @@ def audit(base, venue, year, publisher, corpus, program, *, evidence_complete, i
     raw = base / 'raw'
     comparisons, independent_count = reconcile(publisher, program)
     extra = list(issues) + validate_rows(corpus, venue, year)
+    if venue == 'TPAMI':
+        from tpami_policy import corpus_issues
+        extra.extend(corpus_issues(base, corpus))
     for row in program:
         if not str(row.get('Title', '')).strip():
             extra.append(dict(Status='METADATA_INCOMPLETE', Reason='Independent record has no title',
