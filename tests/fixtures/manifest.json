@@ -1,0 +1,38 @@
+[
+  {
+    "url": "https://proceedings.mlr.press/v235/",
+    "file": "snapshots/e50f3037063dc47ed5ccc1ccf631ec97962b37ccdc0ac819c5ee70d76a9280f9.html",
+    "sha256": "ae1d1b5c4105b9b1d0974750df95a93ecaffeb933576c0637350a206e16d349a",
+    "bytes": 2552497
+  },
+  {
+    "url": "https://proceedings.iclr.cc/paper_files/paper/2024",
+    "file": "snapshots/5221b76ad033d60bf8f141e56ebaa722571b98d7f28fb17a19cfa3bf27cd08bc.html",
+    "sha256": "8e7f1951ec66a102cf2fa827f7527ba8ec55cb56d527e7b28db4a239d2c46eaa",
+    "bytes": 1534245
+  },
+  {
+    "url": "https://proceedings.iclr.cc/paper_files/paper/2024/hash/00153f90d9177dd3a872133972bc8dea-Abstract-Conference.html",
+    "file": "snapshots/1d95f9d282c0cc49c78b28aa2a625f52298cba1e8a3829a80e69ccf42ae7133f.html",
+    "sha256": "de22fd4ac3bc32137dd09cd4b48dea62e76fd859eaaf042f7185f1e44d7f6e08",
+    "bytes": 9180
+  },
+  {
+    "url": "https://ojs.aaai.org/index.php/AAAI/issue/view/683",
+    "file": "snapshots/70d473806fe8c7a8c0281348f841adbe6f4e83582e8150724eaa2d8793b6932b.html",
+    "sha256": "9bcfbf61528ecdcea864f6f44cc2ac5378d64eee937755a95badfd32b64314d4",
+    "bytes": 100545
+  },
+  {
+    "url": "https://ojs.aaai.org/index.php/AAAI/article/view/36958",
+    "file": "snapshots/e1652868b00b3d1b3ade9afea75f842a0436df9b7be43686897eb557a68c6582.html",
+    "sha256": "7daffe062ec60322b4b316ed4d81fdc7e79b3d94fa3989b55b102e7df11940e9",
+    "bytes": 26017
+  },
+  {
+    "url": "https://proceedings.mlr.press/v235/abad-rocamora24a.html",
+    "file": "snapshots/0ad5e246473371e65cc1cb06dbeab25b0ca544061921dbf9a52b3c0e4297f627.html",
+    "sha256": "f2f6360dd4a224e54f88ad52efdd02e7669fc9a01c3db5c89b99324696426d52",
+    "bytes": 15602
+  }
+]

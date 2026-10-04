@@ -1,0 +1,2 @@
+# Preserve the exact frozen rule bytes on Windows checkouts.
+config/screening_rules_v1_2.yaml text eol=lf
