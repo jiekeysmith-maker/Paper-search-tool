@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from io import BytesIO
 import json
+import uuid
 from pathlib import Path
 
 import pandas as pd
@@ -31,7 +32,8 @@ MAPPING = dict(zip(
 
 def venue_year_path(library_root, venue, year):
     """Explicit root; no default production destination and no path traversal."""
-    if venue not in SUPPORTED_VENUES or type(year) is not int or not 1900 <= year <= 2100:
+    allowed_years = (2024, 2026) if venue == 'ECCV' else (2024, 2025, 2026)
+    if venue not in SUPPORTED_VENUES or type(year) is not int or year not in allowed_years:
         raise ValueError('Unsupported Venue-Year (TPAMI is not implemented)')
     root = Path(library_root).resolve()
     base = root / venue / str(year)
@@ -49,7 +51,7 @@ def verified_corpus(base, venue, year):
         raise ValueError('Completeness gate did not pass')
     if audit.get('venue') != venue or str(audit.get('year')) != str(year):
         raise ValueError('Audit Venue-Year mismatch')
-    if audit.get('unresolved_count') != 0:
+    if type(audit.get('unresolved_count')) is not int or audit['unresolved_count'] != 0:
         raise ValueError('Audit must explicitly report zero unresolved issues')
     corpus = raw / 'Formal_Proceedings_Corpus.csv'
     if corpus.resolve() != corpus:
@@ -77,8 +79,12 @@ def verified_corpus(base, venue, year):
     return frame, corpus_sha
 
 
-def screen(venue, year, *, library_root, write=False):
+def screen(venue, year, *, library_root, write=False, lock_held=False):
     base = venue_year_path(library_root, venue, year)
+    if write and not lock_held:
+        from venue_runtime import job_lock
+        with job_lock(base, venue, year):
+            return screen(venue, year, library_root=library_root, write=True, lock_held=True)
     rule_sha = sha256(RULES.read_bytes()).hexdigest()
     if rule_sha != RULES_SHA256:
         raise ValueError('Frozen V1.2 rules hash mismatch')
@@ -132,10 +138,14 @@ def screen(venue, year, *, library_root, write=False):
         # New manual runs never silently overwrite a previous candidate pool.
         if out.exists():
             raise FileExistsError(f'Screening output already exists: {out}')
-        out.mkdir(parents=True)
+        from venue_runtime import atomic_bytes
+        staging = base / 'runtime' / ('screening-' + uuid.uuid4().hex + '.partial')
+        staging.mkdir(parents=True)
         for name, table in tables.items():
-            table.to_csv(out / name, index=False, lineterminator='\n', encoding='utf-8-sig')
-        (out / 'Run_Manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+            table.to_csv(staging / name, index=False, lineterminator='\n', encoding='utf-8-sig')
+        manifest['output_sha256'] = {name: sha256((staging / name).read_bytes()).hexdigest() for name in tables}
+        atomic_bytes(staging / 'Run_Manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2).encode('utf-8'))
+        staging.rename(out)
     return manifest
 
 

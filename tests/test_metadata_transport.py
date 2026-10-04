@@ -50,3 +50,8 @@ def test_http_date_retry_after():
 def test_zero_attempts_rejected():
     with pytest.raises(ValueError):
         get_metadata('https://example.test', attempts=0)
+
+
+def test_last_attempt_long_retry_after_is_explicit():
+    with pytest.raises(RetryDeferred, match='120'):
+        get_metadata('https://example.test', get=Mock(return_value=response(429, '120')), attempts=1)

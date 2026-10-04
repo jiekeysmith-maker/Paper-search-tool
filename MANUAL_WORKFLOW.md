@@ -4,7 +4,9 @@
 
 目标流程：人工选择一个 Venue-Year → Python 抓取 → Python 独立完整性审计 → VERIFIED 后冻结 V1.2 → 候选池 → 人工二次复核。
 
-当前仅提供传输、解析器和筛选入口。单年度抓取与完整性审计编排尚待实现；没有 scheduler、队列、锁、心跳或自动续跑。
+2026-10-05 更新：现已提供 `run_venue.py`，按命令中指定的年份顺序执行抓取、独立审计和受门槛保护的 V1.2。正式调用说明见 `MULTIVENUE_RUNBOOK.md`，成熟度与验收边界见 `MULTIVENUE_IMPLEMENTATION_REPORT.md`。原迁移报告是历史记录，不代表当前实现状态。
+
+每个 Venue-Year 有独立锁、可校验 HTTP 快照和进度文件；没有 scheduler、全局队列、心跳或自动续跑。AAAI/ECCV 尚未完成真实全年生产验收，不能把少量详情烟测解释为生产认证。
 
 ## 筛选的输入契约
 
@@ -33,7 +35,7 @@ python screen_verified.py ICML 2024 --library-root "<人工指定的库根目录
 python screen_verified.py ICML 2024 --library-root "<人工指定的库根目录>" --write
 ```
 
-输出 `KD_Screening.csv`、四类规则分组 CSV、`Needs_Secondary_Review.csv`、`SAFE_DROP_Audit_Sample.csv` 和 `Run_Manifest.json`。输出仅在本年度 screening 下，无全局状态表、调度资格文件或跨年度写入。没有 XLSX/PDF 下载或自动人工确认。
+输出 `KD_Screening.csv`、四类规则分组 CSV、`Needs_Secondary_Review.csv`、`SAFE_DROP_Audit_Sample.csv` 和 `Run_Manifest.json`。写入时使用本年度 runtime 下的锁和临时目录，整组完成后重命名为 screening；已有 screening 拒绝覆盖。没有全局状态表、调度资格文件、跨年度写入、PDF 下载或自动人工确认。
 
 传输调用方应先 `get_metadata(url)`，再 `response.raise_for_status()`；最终 429/5xx 不可作为成功输入。长 Retry-After 会停止并抛出 `RetryDeferred`，由人工决定后续动作。
 

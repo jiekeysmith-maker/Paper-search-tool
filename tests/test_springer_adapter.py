@@ -58,3 +58,10 @@ def test_duplicate_and_wrong_year_book_rejected():
         SpringerECCVAdapter().book(BOOK+f'<a data-track="click_book_toc" href="{CHAPTER}">Duplicate</a>', URL, 2024)
     with pytest.raises(ValueError):
         SpringerECCVAdapter().book(BOOK, URL, 2026)
+
+
+def test_publisher_author_family_given_order_preserves_raw_metadata():
+    import json
+    row = SpringerECCVAdapter().detail(detail().replace('content="Alice"', 'content="Bonato, Jacopo"'), CHAPTER, 2024, DOI, 'fixture')
+    assert row['Authors'] == 'Jacopo Bonato'
+    assert json.loads(row['BibTeX_or_Publisher_Metadata'])['citation_author'] == ['Bonato, Jacopo']

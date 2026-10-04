@@ -28,9 +28,10 @@ def get_metadata(url,*,get=requests.get,sleep=time.sleep,attempts=3,history=None
             if attempt+1==attempts:raise
             sleep(2**attempt);continue
         history.append({'attempt':attempt+1,'http_status':r.status_code})
-        if r.status_code not in (429,500,502,503,504) or attempt+1==attempts:return r
+        if r.status_code not in (429,500,502,503,504):return r
         delay=retry_delay(r.headers.get('Retry-After'),2**attempt)
         history[-1]['retry_after_seconds']=delay
         if delay>60:raise RetryDeferred(f'Retry-After {delay}s; stopped. A human must choose when to retry.')
+        if attempt+1==attempts:return r
         sleep(delay)
     raise RuntimeError('No response')
