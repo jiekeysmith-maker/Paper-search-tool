@@ -17,12 +17,18 @@ Read current Git HEAD/status/diff before resuming; do not reset WIP.
 - Frozen V1.2 SHA256 confirmed `4a94a8346cce3ab8dae5153ba9c07041371f783902d0bdb55becbc0d9c0cf514`.
 - No production checkout or Paper Library writes; no push or merge.
 
+## ECCV stage completed; TPAMI next (2026-10-06)
+
+ECCV code checkpoints: `7c63628`, `57934d9`. Full offline enumeration/detail acceptance completed in `eccv_identity_20261006`: 89 volumes, 178 TOC pages, 2388 raw chapters, 2386 target metadata records, two proven corrections, zero network requests. It ran the initial identity module already loaded in that process and produced 293 unresolved rows.
+
+Latest identity rules, including numeric/math safeguards and four cached explicit DOI proofs, were then applied to those completed outputs in `eccv_identity_proofs_20261006`, preserving source-file SHA256 provenance. Result: REVIEW_REQUIRED, 301 unresolved audit rows; publisher/metadata 2386, independent 2387, title/abstract present 2386, missing/invalid abstracts 0, duplicate identities 0. Formal screening was explicitly tested and correctly refused. The new unresolved total is not comparable to a missing-paper count: publisher candidates and unconfirmed independent identities remain separately visible. Full-name conflicts/insufficient publication relations require further official evidence; no guessed author aliases or deletions.
+
+Latest targeted group: 49 passed (identity and recovery), including missing abstract preserving other chapters. `git diff --check` passed. ECCV engineering reconciliation/gate stage is complete with REVIEW_REQUIRED source data; a strict production corpus is NOT VERIFIED. No active ECCV replay remains.
+
 ## Next exact actions
 
-1. Finish/read ECCV2024 offline replay, then re-audit its records with cached explicit ECVA DOI proofs in a new isolated output. Preserve all original evidence.
-2. Review remaining source conflicts, add any missing regression, commit completed ECCV stage.
-3. Only then investigate TPAMI prototype and public source structures. Remove hardcoded 12-issue completeness assumptions. Preserve final issue year policy, Early Access identity/date separation, strict gate. Public pages only, no restricted REST or access bypass.
-4. TPAMI 2024 end-to-end acceptance is required; 2025/2026 follow sequentially if sources permit. Do not claim production readiness from mocked tests.
+1. Investigate TPAMI prototype and public source structures. Remove hardcoded 12-issue completeness assumptions. Preserve final issue year policy, Early Access identity/date separation, strict gate. Public pages only, no restricted REST or access bypass.
+2. TPAMI 2024 end-to-end acceptance is required; 2025/2026 follow sequentially if sources permit. Do not claim production readiness from mocked tests.
 
 ## Native continuation
 
