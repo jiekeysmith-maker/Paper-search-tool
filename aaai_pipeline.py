@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 
 from bs4 import BeautifulSoup
 from venue_runtime import write_json, write_csv, utc
+from metadata_transport import RetryDeferred
 
 NS = {'o': 'http://www.openarchives.org/OAI/2.0/', 'dc': 'http://purl.org/dc/elements/1.1/'}
 ROOT = 'https://ojs.aaai.org/index.php/AAAI/oai'
@@ -18,6 +19,9 @@ class OAIIncomplete(ValueError):
     def __init__(self, cause, rows):
         super().__init__(str(cause))
         self.rows, self.cause = rows, cause
+        while isinstance(cause,OAIIncomplete):cause=cause.cause
+        response=getattr(cause,'response',None)
+        self.stop_requests=isinstance(cause,RetryDeferred) or (response is not None and response.status_code in (401,403,429))
 
 
 def enumerate_oai(cache, year, target_issues, *, set_spec=None):

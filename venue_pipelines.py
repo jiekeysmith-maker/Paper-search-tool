@@ -189,12 +189,14 @@ def aaai(cache, collection):
     # Enumerate every article in target-containing issues independently, then account for
     # explicitly excluded sections using the already preserved section evidence.
     from aaai_pipeline import OAIIncomplete
+    stop_detail_requests=False
     try:
         from aaai_oai_sets import annual_records
         oai = annual_records(cache, year)
         collection.evidence_complete = primary.keys() == independent_issues.keys()
     except OAIIncomplete as exc:
         oai = exc.rows
+        stop_detail_requests=exc.stop_requests
         collection.issue('Independent OAI enumeration incomplete: ' + str(exc))
         collection.evidence_complete = False
         if not oai:
@@ -219,6 +221,14 @@ def aaai(cache, collection):
         collection.issue('Multiple official OAI records require detail verification', 'DUPLICATE_IDENTITY', Official_URL=url)
     missing = []
     for row in collection.publisher:
+        official=by_url.get(row['Official_URL'])
+        if official is not None:
+            from venue_audit import authors
+            if (not row.get('Authors') or not official.get('Authors')
+                    or authors(row['Authors'])!=authors(official['Authors'])):
+                collection.issue('Publisher/OAI author metadata missing or conflicting',
+                                 Official_URL=row['Official_URL'],Title=row['Title'],
+                                 Publisher_Authors=row.get('Authors',''),OAI_Authors=official.get('Authors',''))
         try:
             collection.corpus.append(from_oai(row, by_url[row['Official_URL']], year))
         except (KeyError, ValueError):
@@ -228,7 +238,11 @@ def aaai(cache, collection):
         result['Retrieval_Source'] = row['Official_URL']
         return result
     try:
-        collection.details(detail, missing)
+        if stop_detail_requests:
+            collection.issue('AAAI detail requests deferred after official rate/access stop; rerun manually')
+            collection.save()
+        else:
+            collection.details(detail, missing)
     finally:
         from aaai_pipeline import quality_report
         quality_report(collection)

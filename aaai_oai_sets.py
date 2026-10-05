@@ -52,7 +52,7 @@ def list_sets(cache):
 
 
 def annual_records(cache,year):
-    rows,chains=[],[]
+    rows,chains,failures=[],[],[]
     try:
         inventory=list_sets(cache)
         # Published OJS set identifiers encode the annual series. Each returned
@@ -69,11 +69,22 @@ def annual_records(cache,year):
                 part=enumerate_oai(cache,year,None,set_spec=item['set_spec'])
             except OAIIncomplete as exc:
                 rows.extend(exc.rows)
-                raise
+                chains.append(dict(**item,status='INCOMPLETE',records=len(exc.rows),error=str(exc)))
+                failures.append(f'{item["set_spec"]}: {exc}')
+                write_json(cache.base/'raw/OAI_Annual_Chains.json',dict(status='INCOMPLETE',chains=chains,sets=len(selected)))
+                write_csv(cache.base/'raw/OAI_Annual_Records.csv',rows)
+                # A bad group must not erase or prevent later independent groups.
+                # Respect a server-requested stop; do not switch to another set
+                # to evade a long Retry-After or exhausted HTTP 429 response.
+                if exc.stop_requests:
+                    raise
+                continue
             rows.extend(part)
             chains.append(dict(**item,status='COMPLETE',records=len(part)))
-            write_json(cache.base/'raw/OAI_Annual_Chains.json',dict(status='ENUMERATING',chains=chains))
+            write_json(cache.base/'raw/OAI_Annual_Chains.json',dict(status='INCOMPLETE' if failures else 'ENUMERATING',chains=chains))
             write_csv(cache.base/'raw/OAI_Annual_Records.csv',rows)
+        if failures:
+            raise ValueError('Incomplete annual OAI groups: '+'; '.join(failures))
         write_json(cache.base/'raw/OAI_Annual_Chains.json',dict(status='COMPLETE',chains=chains,sets=len(selected),records=len(rows)))
         return rows
     except Exception as exc:

@@ -161,7 +161,7 @@ def test_aaai_two_independent_enumerations_and_section_scope(tmp_path):
     import html
     xml = f'''<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/" xmlns:dc="http://purl.org/dc/elements/1.1/">
     <ListRecords><record><header/><metadata><dc:source>Proceedings of the AAAI Conference on Artificial Intelligence; Vol. 40 No. 1</dc:source>
-    <dc:title>{html.escape(r['Title'])}</dc:title><dc:identifier>{article['url']}</dc:identifier></metadata></record></ListRecords></OAI-PMH>'''
+    <dc:title>{html.escape(r['Title'])}</dc:title>{''.join('<dc:creator>'+html.escape(a)+'</dc:creator>' for a in r['Authors'].split('; '))}<dc:identifier>{article['url']}</dc:identifier></metadata></record></ListRecords></OAI-PMH>'''
     pages = {'https://aaai.org/proceeding/aaai-40-2026/': link,
              'https://ojs.aaai.org/index.php/AAAI/issue/archive': link,
              url: str(soup), article['url']: body,
