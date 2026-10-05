@@ -120,12 +120,17 @@ class FetchCache:
         key = sha256(url.encode()).hexdigest()
         return self.directory / (key + '.body'), self.directory / (key + '.json')
 
-    def get(self, url):
+    def has_snapshot(self, url):
+        """Availability only. get() must still verify the snapshot before use."""
+        self.validate_url(url)
+        return all(p.is_file() for p in self.paths(url))
+
+    def get(self, url, *, cache_only=False):
         self.validate_url(url)
         body, meta = self.paths(url)
         is_detail = ('/article/view/' in url or '/chapter/' in url or '/hash/' in url
                      or (self.venue == 'ICML' and urlparse(url).path.endswith('.html')))
-        refresh = self.refresh_evidence and not is_detail and url not in self.refreshed
+        refresh = not cache_only and self.refresh_evidence and not is_detail and url not in self.refreshed
         if body.exists() and meta.exists():
             m = json.loads(meta.read_text(encoding='utf-8'))
             data = body.read_bytes()
@@ -140,6 +145,8 @@ class FetchCache:
             history_id = uuid.uuid4().hex
             atomic_bytes(history_dir / (history_id + '.body'), data)
             atomic_bytes(history_dir / (history_id + '.json'), meta.read_bytes())
+        if cache_only:
+            raise ValueError('CACHE_ONLY_MISS: '+url)
         time.sleep(max(0, self.delay - (time.monotonic() - self.last)))
         history = []
         self.requests += 1

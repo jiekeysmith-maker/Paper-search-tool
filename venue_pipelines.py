@@ -297,6 +297,8 @@ def springer_declared_counts(html, year):
 
 def eccv(cache, collection):
     year, adapter = cache.year, SpringerECCVAdapter()
+    from eccv_access import ECCVAccess
+    access=ECCVAccess(cache)
     url = 'https://link.springer.com/conference/eccv'
     queue, seen, roots, declared = [url], set(), set(), []
     while queue:
@@ -305,21 +307,35 @@ def eccv(cache, collection):
         if url in seen:
             continue
         if len(seen) >= 200:
-            raise ValueError('Springer conference pagination limit')
+            collection.issue('Springer conference pagination limit; inventory incomplete')
+            break
         seen.add(url)
-        html = cache.get(url)
-        roots.update(springer_books(html, url, year))
-        declared.extend(springer_declared_counts(html, year))
-        soup = BeautifulSoup(html, 'html.parser')
-        queue.extend(urljoin(url, a['href']) for a in soup.select('.c-pagination a[href], a[rel="next"]'))
+        try:
+            html = access.get(url)
+            roots.update(springer_books(html, url, year))
+            declared.extend(springer_declared_counts(html, year))
+            soup = BeautifulSoup(html, 'html.parser')
+            queue.extend(urljoin(url, a['href']) for a in soup.select('.c-pagination a[href], a[rel="next"]'))
+        except Exception as exc:
+            collection.issue('Springer conference inventory unavailable: '+repr(exc),Evidence_URL=url)
     if not roots:
-        raise ValueError('No official Springer target-year book list')
+        collection.issue('No official Springer target-year book list')
     try:
-        collection.program = ecva_index(cache.get('https://www.ecva.net/papers.php'), year)
-    except ValueError as exc:
+        collection.program = ecva_index(access.get('https://www.ecva.net/papers.php'), year)
+    except Exception as exc:
         collection.issue('Independent ECVA enumeration unavailable: ' + str(exc))
+    if not collection.program and year == 2026:
+        from eccv_evidence import accepted_program
+        accepted_url=f'https://eccv.ecva.net/Conferences/{year}/AcceptedPapers'
+        try:
+            collection.program,program_status=accepted_program(access.get(accepted_url),accepted_url,year)
+            write_json(cache.base/'raw/Accepted_Program_Evidence.json',program_status)
+            collection.issue('Official acceptance list is not a final publication inventory; publisher checks may change membership',
+                             Evidence_URL=accepted_url)
+        except Exception as exc:
+            collection.issue('Official accepted-paper enumeration unavailable: '+repr(exc))
     books, seen, queue, failures = {}, set(), sorted(roots), []
-    access_blocked = False
+    official_volumes=[];expected_parts={}
     home_checked = year != 2026
     while queue or not home_checked:
         if not queue:
@@ -327,9 +343,10 @@ def eccv(cache, collection):
             from eccv_evidence import conference_volumes
             home = 'https://eccv.ecva.net/'
             try:
-                official_volumes = conference_volumes(cache.get(home),home,year)
+                official_volumes = conference_volumes(access.get(home),home,year)
                 write_json(cache.base/'raw/Conference_Volume_Inventory.json',official_volumes)
                 known_parts={book['Part'] for book in books.values()}
+                expected_parts.update({r['Official_URL']:r['Part'] for r in official_volumes})
                 queue.extend(r['Official_URL'] for r in official_volumes if r['Part'] not in known_parts)
             except Exception as exc:
                 collection.issue('Official conference volume inventory unavailable: '+repr(exc))
@@ -339,20 +356,28 @@ def eccv(cache, collection):
         if url in seen:
             continue
         if len(seen) >= 2000:
-            raise ValueError('Springer book pagination limit')
+            collection.issue('Springer book pagination limit; inventory incomplete')
+            break
         seen.add(url)
         try:
-            if access_blocked and not all(p.exists() for p in cache.paths(url)):
-                raise ValueError('NOT_REQUESTED_AFTER_SPRINGER_AUTH_REDIRECT; manual access review required')
-            book = adapter.book(cache.get(url), url, year)
+            book = adapter.book(access.get(url), url, year)
         except Exception as exc:
-            if 'idp.springer.com/auth/' in str(exc):
-                access_blocked = True
             failures.append(dict(url=url, error=repr(exc)))
             collection.issue('Springer TOC unavailable: '+repr(exc), Official_URL=url)
             write_json(cache.base / 'raw' / 'Volume_Failures.json', failures)
             continue
         doi = book['Book_DOI']
+        if url in expected_parts and expected_parts[url]!=book['Part']:
+            collection.issue('Conference volume alias resolves to a different Part',Evidence_URL=url,
+                             Declared_Part=expected_parts[url],Publisher_Part=book['Part'])
+        for entry in book.get('Non_Chapter_Entries',[]):
+            if entry['Title'].casefold() in ('front matter','back matter'):
+                collection.excluded.append({**entry,'Publication_Type':'TOC_NON_CHAPTER',
+                                            'Reason':'Official publisher TOC explicitly labels non-chapter material; not counted as a chapter'})
+            else:
+                collection.issue('Unclassified non-chapter TOC entry',**entry)
+        for link in book.get('Untrusted_Volume_Links',[]):
+            collection.issue('Other-volume link outside official book scope',Evidence_URL=url,Linked_URL=link)
         if 'page=' not in url:
             seen.add('https://link.springer.com/book/'+doi)
         previous = books.get(doi)
@@ -362,15 +387,19 @@ def eccv(cache, collection):
             previous['Chapters'].extend(book['Chapters'])
         else:
             books[doi] = book
+        books[doi].setdefault('TOC_Page_URLs',[]).append(url)
         write_json(cache.base / 'raw' / 'Volume_Enumeration.json', dict(
             status='ENUMERATING', conference_seed_books=sorted(roots), conference_declared_counts=declared, books=books))
         queue.extend(book['Pages'])
         queue.extend(book['Other_Volumes'])
-    parts = set()
+    parts = set();lncs_volumes=set()
     for doi, book in books.items():
         if book['Part'] in parts:
             collection.issue('Duplicate LNCS part', 'DUPLICATE_IDENTITY', Book_DOI=doi)
         parts.add(book['Part'])
+        if book['LNCS_Volume'] in lncs_volumes:
+            collection.issue('Duplicate LNCS volume identity','DUPLICATE_IDENTITY',Book_DOI=doi,LNCS_Volume=book['LNCS_Volume'])
+        lncs_volumes.add(book['LNCS_Volume'])
         unique = {}
         for chapter in book['Chapters']:
             if chapter['Official_URL'] in unique:
@@ -385,38 +414,50 @@ def eccv(cache, collection):
     if volume_counts:
         if volume_counts != {len(books)}:
             collection.issue(f'Conference declared volume counts {sorted(volume_counts)} differ from enumerated {len(books)}')
-    elif roots != {'https://link.springer.com/book/' + doi for doi in books}:
+    elif not official_volumes or {r['Part'] for r in official_volumes} != parts:
         collection.issue('No complete official volume inventory/count corroborates discovered other-volumes')
+    if official_volumes and {r['Part'] for r in official_volumes} != parts:
+        collection.issue('Conference Part inventory and publisher Parts differ')
     if paper_counts and paper_counts != {len(collection.publisher)}:
         collection.issue(f'Conference declared paper counts {sorted(paper_counts)} differ from enumerated {len(collection.publisher)}')
     write_csv(cache.base/'raw/Publisher_All_Chapter_Records.csv',collection.publisher)
-    from eccv_evidence import correction_evidence
-    target=[]
-    for row in collection.publisher:
-        proof=None
-        if row['Title'].startswith('Correction to:'):
-            try:
-                proof=correction_evidence(cache.get(row['Official_URL']),row['Official_URL'],year)
-            except Exception as exc:
-                collection.issue('Correction classification unavailable: '+repr(exc),Official_URL=row['Official_URL'])
-        if proof:
-            collection.excluded.append(proof)
-        else:
-            target.append(row)
-    collection.publisher=target
+    from eccv_evidence import nonpaper_candidate,nonpaper_evidence
     def detail(html, row):
         result = adapter.detail(html, row['Official_URL'], year, row['Book_DOI'], utc())
         # TOC authors may be truncated. Reconciliation uses full chapter citation authors.
         row['Authors'] = result['Authors']
         row['TOC_Title'],row['Title']=row['Title'],result['Title']
+        row['Paper_ID'],row['DOI']=result['Paper_ID'],result['DOI']
         result['Retrieval_Source']=row['Official_URL']
+        result['Part'],result['LNCS_Volume']=books[row['Book_DOI']]['Part'],books[row['Book_DOI']]['LNCS_Volume']
         return result
     collection.save()
-    # Preserve all accessible TOCs, but do not request thousands of details when
-    # an access restriction has already prevented proving the publisher inventory.
-    if not failures:
-        collection.details(detail)
-    collection.evidence_complete = bool(collection.program) and not failures
+    excluded_urls=set()
+    try:
+        for number,row in enumerate(collection.publisher,1):
+            try:
+                html=access.get(row['Official_URL'],cache_only=bool(failures))
+                if nonpaper_candidate(row['Title']):
+                    proof=nonpaper_evidence(html,row['Official_URL'],year)
+                    if not proof:raise ValueError('Non-paper candidate lacks sufficient official classification evidence')
+                    collection.excluded.append(proof);excluded_urls.add(row['Official_URL'])
+                else:
+                    result=detail(html,row)
+                    if nonpaper_candidate(result['Title']):
+                        proof=nonpaper_evidence(html,row['Official_URL'],year)
+                        if not proof:raise ValueError('Chapter metadata suggests unclassified non-paper record')
+                        collection.excluded.append(proof);excluded_urls.add(row['Official_URL'])
+                    else:
+                        collection.corpus.append(result)
+            except Exception as exc:
+                collection.issue('Chapter unavailable/unresolved: '+repr(exc),Official_URL=row['Official_URL'],Title=row['Title'])
+            if number%25==0 or number==len(collection.publisher):
+                print(f'ECCV {year}: details {number}/{len(collection.publisher)}; cache hits={cache.hits}',flush=True)
+                collection.save()
+    finally:
+        collection.publisher=[r for r in collection.publisher if r['Official_URL'] not in excluded_urls]
+        collection.save()
+    collection.evidence_complete = bool(collection.program) and not failures and not access.blocked and not collection.issues
 
 
 from tpami_pipeline import tpami

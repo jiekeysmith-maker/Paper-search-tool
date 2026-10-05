@@ -94,7 +94,8 @@ def test_eccv_multivolume_pagination_and_full_authors(tmp_path):
     eccv(cache, c)
     assert len(c.corpus) == 3 and all(r['Authors'] == 'Alice' for r in c.publisher)
     assert u1 + '?page=1' not in cache.visited
-    assert audit(tmp_path, 'ECCV', 2024, c.publisher, c.corpus, c.program, evidence_complete=c.evidence_complete, issues=c.issues)['status'] == 'VERIFIED'
+    # Matching linked books/chapters alone is not proof of a complete volume inventory.
+    assert audit(tmp_path, 'ECCV', 2024, c.publisher, c.corpus, c.program, evidence_complete=c.evidence_complete, issues=c.issues)['status'] == 'REVIEW_REQUIRED'
 
 
 def test_declared_count_does_not_prove_chapters_complete(tmp_path):
@@ -127,6 +128,19 @@ def test_eccv_official_part_alias_recovers_missing_volume(tmp_path):
     assert cache.visited.count(alias)==1 and u2 not in cache.visited
     assert u2+'?page=1' not in cache.visited
     assert not any('Expected' in x['Reason'] or 'incomplete' in x['Reason'] for x in c.issues)
+
+
+def test_missing_volume_does_not_discard_cached_chapter(tmp_path):
+    doi='10.1007/978-1';url='https://link.springer.com/book/'+doi
+    chapter_url='https://link.springer.com/chapter/'+doi+'_1'
+    absent='https://link.springer.com/book/10.1007/unavailable'
+    pages={'https://link.springer.com/conference/eccv':f'<a href="{url}">Computer Vision – ECCV 2024</a><a href="{absent}">Computer Vision – ECCV 2024</a>',
+           url:book(doi,'I',1,[1]),chapter_url:chapter(doi,1),absent:'Temporary incomplete publisher response',
+           'https://www.ecva.net/papers.php':'<dt class="ptitle"><a href="papers/eccv_2024/papers_ECCV/html/1.html">Paper 1</a></dt><dd><a>Alice</a></dd>'}
+    cache=Site(tmp_path,'ECCV',2024,pages);cache.get(chapter_url)
+    c=Collection(cache);eccv(cache,c)
+    assert len(c.corpus)==1 and not c.evidence_complete and c.issues
+    assert cache.visited.count(chapter_url)==1
 
 
 def test_screening_failure_preserves_verified_gate_for_manual_retry(tmp_path, monkeypatch):

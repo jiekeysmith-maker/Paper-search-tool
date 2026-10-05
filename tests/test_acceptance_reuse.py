@@ -13,6 +13,7 @@ def test_acceptance_reads_without_copying_and_rechecks_hash(tmp_path):
     cache=AcceptanceCache(tmp_path/'attempt','ECCV',2024,fetch=no_network,delay=0)
     cache.import_registry(registry,{url})
     assert cache.get(url)=='official fixture'
+    assert cache.has_snapshot(url)
     assert not cache.paths(url)[0].exists()
     assert cache.manifest()[0]['read_only_reuse']
     source.write_bytes(b'changed evidence')

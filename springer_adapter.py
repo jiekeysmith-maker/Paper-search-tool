@@ -7,16 +7,21 @@ class SpringerECCVAdapter:
     def book(self,html,url,year):
         s=BeautifulSoup(html,'html.parser');title=s.select_one('meta[name="title"]');doi=s.select_one('meta[name="doi"]')
         if not title or title['content']!=f'Computer Vision – ECCV {year}' or not doi:raise ValueError('Wrong book conference/year/track')
+        book_path=urlparse(url).path
+        if not doi['content'].startswith('10.1007/') or (book_path.startswith('/book/10.1007/') and book_path!='/book/'+doi['content']):
+            raise ValueError('Book DOI/canonical identity mismatch')
         text=s.get_text(' ',strip=True)
         part=re.search(r'Proceedings,\s+Part\s+([IVXLCDM]+)',text)
         lncs=re.search(r'LNCS, volume (\d+)',text)
         count=s.select_one('#toc')
         count=re.search(r'Table of contents \((\d+) papers\)',count.get_text(' ',strip=True)) if count else None
         if not part or not lncs or not count:raise ValueError('Incomplete book metadata')
-        chapters=[]
+        chapters=[];non_chapters=[]
         for a in s.select('a[data-track="click_book_toc"]'):
             u=urljoin(url,a['href'])
-            if '/chapter/' not in u:continue
+            if '/chapter/' not in u:
+                non_chapters.append(dict(Title=a.get_text(' ',strip=True),Official_URL=u,Book_DOI=doi['content'],Evidence_URL=url))
+                continue
             if not u.startswith('https://link.springer.com/chapter/'+doi['content']+'_'):raise ValueError('Chapter outside parent book')
             container=a.parent.parent
             authors=container.select_one('.app-author-list') if container else None
@@ -27,12 +32,14 @@ class SpringerECCVAdapter:
             p=urlparse(urljoin(url,a['href']))
             q=parse_qs(p.query)
             if (p.scheme=='https' and p.hostname=='link.springer.com'
-                    and p.path=='/book/'+doi['content'] and set(q)=={'page'}
-                    and len(q['page'])==1 and q['page'][0].isdigit()):
+                    and p.path in ('/book/'+doi['content'],book_path) and set(q)=={'page'}
+                    and len(q['page'])==1 and q['page'][0].isdigit() and int(q['page'][0])>=1):
                 pages.add(urlunparse(p._replace(fragment='')))
         pages=sorted(pages)
-        volumes=[urljoin(url,a['href']) for a in s.select('.c-book-other-volumes__item a') if a.get_text(' ',strip=True)==title['content']]
-        return dict(Book_DOI=doi['content'],Part=part[1],LNCS_Volume=lncs[1],Declared_Chapter_Count=int(count[1]),Chapters=chapters,Pages=pages,Other_Volumes=volumes)
+        links=[urljoin(url,a['href']) for a in s.select('.c-book-other-volumes__item a') if a.get_text(' ',strip=True)==title['content']]
+        volumes=[u for u in links if urlparse(u).scheme=='https' and urlparse(u).hostname=='link.springer.com' and urlparse(u).path.startswith('/book/')]
+        return dict(Book_DOI=doi['content'],Part=part[1],LNCS_Volume=lncs[1],Declared_Chapter_Count=int(count[1]),Chapters=chapters,Pages=pages,Other_Volumes=volumes,
+                    Non_Chapter_Entries=non_chapters,Untrusted_Volume_Links=[u for u in links if u not in volumes])
 
     def detail(self,html,url,year,bookdoi,stamp):
         if not url.startswith('https://link.springer.com/chapter/'+bookdoi+'_'):raise ValueError('Wrong chapter identity')

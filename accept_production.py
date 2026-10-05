@@ -32,12 +32,12 @@ class AcceptanceCache(FetchCache):
                 self.validate_url(entry['url'])
                 self.reusable.setdefault(entry['url'],entry)
 
-    def get(self,url):
+    def get(self,url,*,cache_only=False):
         body,meta=self.paths(url)
-        if body.exists() or meta.exists() or self.refresh_evidence or url not in self.reusable:
-            return super().get(url)
+        if body.exists() or meta.exists() or (self.refresh_evidence and not cache_only) or url not in self.reusable:
+            return super().get(url,cache_only=cache_only)
         self.validate_url(url);entry=self.reusable[url];source=Path(entry['snapshot'])
-        if not source.is_file():return super().get(url)
+        if not source.is_file():return super().get(url,cache_only=cache_only)
         payload=source.read_bytes()
         if (entry.get('http_status')!=200 or entry.get('sha256')!=sha256(payload).hexdigest()
                 or entry.get('bytes')!=len(payload)):
@@ -45,6 +45,9 @@ class AcceptanceCache(FetchCache):
         text=payload.decode('utf-8-sig');self.hits+=1
         self.reused[url]={**entry,'venue':self.venue,'year':self.year,'imported_from':str(source),'read_only_reuse':True}
         return text
+
+    def has_snapshot(self,url):
+        return super().has_snapshot(url) or (url in self.reusable and Path(self.reusable[url]['snapshot']).is_file())
 
     def manifest(self):
         entries=super().manifest()
