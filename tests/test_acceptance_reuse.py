@@ -24,3 +24,12 @@ def test_acceptance_scope_is_not_inferred_from_path(tmp_path):
     registry=tmp_path/'registry.json';registry.write_text(json.dumps(dict(venue='ECCV',year=2026,source_snapshots=[])))
     cache=AcceptanceCache(tmp_path/'attempt','ECCV',2024,delay=0)
     with pytest.raises(ValueError,match='scope'):cache.import_registry(registry,set())
+
+
+def test_missing_reused_snapshot_cannot_trigger_cache_only_network(tmp_path):
+    url='https://link.springer.com/book/10.1007/example'
+    def forbidden(*a,**k):pytest.fail('Cache-only request touched network')
+    cache=AcceptanceCache(tmp_path/'attempt','ECCV',2024,fetch=forbidden)
+    cache.reusable[url]=dict(snapshot=str(tmp_path/'gone.body'))
+    assert not cache.has_snapshot(url)
+    with pytest.raises(ValueError,match='CACHE_ONLY_MISS'):cache.get(url,cache_only=True)

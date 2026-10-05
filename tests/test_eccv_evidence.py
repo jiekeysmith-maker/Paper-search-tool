@@ -46,3 +46,14 @@ def test_correction_requires_explicit_original_and_c_page():
     assert correction_evidence(html.replace('C1','1'),url,2024) is None
     assert correction_evidence(html.replace('test_16','test_28'),url,2024) is None
     assert correction_evidence(html,url,2026) is None
+    assert correction_evidence(html.replace('Correction to:','Erratum to:'),url,2024)
+
+
+def test_front_matter_needs_explicit_publisher_type_not_title_alone():
+    from eccv_evidence import nonpaper_evidence
+    fields=dict(citation_title='Front Matter',citation_doi='10.1007/book_1',citation_firstpage='i',
+                citation_inbook_title='Computer Vision – ECCV 2024',citation_section='Front Matter')
+    html=''.join(f'<meta name="{k}" content="{v}">' for k,v in fields.items())
+    url='https://link.springer.com/chapter/10.1007/book_1'
+    assert nonpaper_evidence(html,url,2024)['Publication_Type']=='NON_PAPER_MATTER'
+    assert nonpaper_evidence(html.replace('citation_section','unknown'),url,2024) is None

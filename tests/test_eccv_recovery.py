@@ -58,3 +58,33 @@ def test_cache_only_overrides_refresh_and_never_fetches_misses(tmp_path):
     cache.paths(links[0])[0].write_bytes(b'corrupt')
     with pytest.raises(ValueError,match='INTEGRITY'):cache.get(links[0],cache_only=True)
     assert cache.visited==[links[0]]
+
+
+@pytest.mark.parametrize('proven',[True,False])
+def test_correction_stays_auditable_and_title_alone_cannot_exclude(tmp_path,proven):
+    pages,links=sources();book_url='https://link.springer.com/book/10.1007/978-1'
+    pages[book_url]=pages[book_url].replace('Paper 3','Correction to: Paper 1')
+    pages[links[2]]=pages[links[2]].replace('content="Paper 3"','content="Correction to: Paper 1"').replace('content="1"','content="C1"')
+    if proven:pages[links[2]]+='<p>The updated version of this chapter can be found at https://doi.org/10.1007/978-1_1</p>'
+    pages['https://www.ecva.net/papers.php']=pages['https://www.ecva.net/papers.php'].replace('<dt class="ptitle"><a href="papers/eccv_2024/papers_ECCV/html/3.html">Paper 3</a></dt><dd><a>Alice</a></dd>','')
+    c=Collection(Site(tmp_path,'ECCV',2024,pages));eccv(c.cache,c)
+    result=audit(tmp_path,'ECCV',2024,c.publisher,c.corpus,c.program,evidence_complete=c.evidence_complete,issues=c.issues,excluded=c.excluded)
+    assert len(c.corpus)==2 and (tmp_path/'raw/Publisher_All_Chapter_Records.csv').exists()
+    if proven:
+        assert len(c.excluded)==1 and len(c.publisher)==2 and result['status']=='VERIFIED'
+        assert c.excluded[0]['Original_Chapter_URL'].endswith('_1')
+    else:
+        assert not c.excluded and len(c.publisher)==3 and result['status']=='REVIEW_REQUIRED'
+
+
+def test_accepted_list_cannot_authorize_formal_screening(tmp_path):
+    pages,links=sources();pages={u:html.replace('2024','2026') for u,html in pages.items()}
+    pages['https://www.ecva.net/papers.php']='<h1>No target year yet</h1>'
+    pages['https://eccv.ecva.net/']='<h1>ECCV 2026</h1><a href="https://link.springer.com/book/10.1007/978-1">I</a>'
+    rows=''.join(f'<tr><td><a href="/virtual/2026/poster/{n}">Paper {n}</a><div class="indented"><i>Alice</i></div></td></tr>' for n in (1,2,3))
+    pages['https://eccv.ecva.net/Conferences/2026/AcceptedPapers']='<h1>ECCV 2026 Accepted Papers</h1><p>This paper list is preliminary pending publisher checks.</p><table id="event-list-2026-poster-nodates-filter-vslinks-table">'+rows+'</table>'
+    c=Collection(Site(tmp_path,'ECCV',2026,pages));eccv(c.cache,c)
+    assert len(c.corpus)==3 and len(c.program)==3 and not c.evidence_complete
+    result=audit(tmp_path,'ECCV',2026,c.publisher,c.corpus,c.program,evidence_complete=c.evidence_complete,issues=c.issues)
+    assert result['status']=='REVIEW_REQUIRED' and result['counts_by_class']['EXACT']==3
+    assert not (tmp_path/'raw/Formal_Proceedings_Corpus.csv').exists()

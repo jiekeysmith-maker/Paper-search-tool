@@ -249,6 +249,7 @@ def aaai(cache, collection):
 
 
 def ecva_index(html, year):
+    from urllib.parse import urlparse
     soup = BeautifulSoup(html, 'html.parser')
     rows = []
     for title in soup.select('dt.ptitle'):
@@ -263,9 +264,13 @@ def ecva_index(html, year):
             names = author.get_text(' ', strip=True).split(', ')
         # ECVA marks equal contribution with trailing *, not part of the person's name.
         names = [name.rstrip('*').strip() for name in names]
-        rows.append(dict(Title=a.get_text(' ', strip=True),
+        official=urljoin('https://www.ecva.net/',a['href'])
+        parsed=urlparse(official)
+        if parsed.scheme!='https' or parsed.hostname not in ('ecva.net','www.ecva.net') or not parsed.path.startswith(f'/papers/eccv_{year}/'):
+            raise ValueError('ECVA entry outside official target-year scope')
+        rows.append(dict(Title=a.get_text(' ', strip=True),Venue='ECCV',Year=year,
                          Authors='; '.join(names),
-                         Official_URL=urljoin('https://www.ecva.net/', a['href']), Evidence_URL='https://www.ecva.net/papers.php'))
+                         Official_URL=official,Evidence_URL='https://www.ecva.net/papers.php'))
     if not rows:
         raise ValueError('No target-year ECVA proceedings entries')
     return rows
