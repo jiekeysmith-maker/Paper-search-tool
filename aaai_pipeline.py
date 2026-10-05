@@ -20,9 +20,13 @@ class OAIIncomplete(ValueError):
         self.rows, self.cause = rows, cause
 
 
-def enumerate_oai(cache, year, target_issues):
+def enumerate_oai(cache, year, target_issues, *, set_spec=None):
     url = ROOT + '?verb=ListRecords&metadataPrefix=oai_dc'
-    seen, rows, pages, identifiers, duplicates = set(), [], [], {}, []
+    raw = cache.base / 'raw'
+    if set_spec:
+        url += '&' + urlencode({'set':set_spec})
+        raw = raw / 'OAI_Sets' / sha256(set_spec.encode()).hexdigest()[:16]
+    seen, rows, pages, identifiers, duplicates, deletions = set(), [], [], {}, [], []
     expected, consumed = None, 0
     try:
         while url:
@@ -32,6 +36,9 @@ def enumerate_oai(cache, year, target_issues):
             tree = ET.fromstring(cache.get(url))
             error = tree.find('o:error', NS)
             if error is not None:
+                if set_spec and len(seen)==1 and error.get('code')=='noRecordsMatch':
+                    write_json(raw/'OAI_Pagination.json',dict(status='COMPLETE',set_spec=set_spec,pages=[],consumed=0,expected=0,no_records_evidence=url))
+                    return []
                 raise ValueError(f'OAI error {error.get("code")}: {error.text}')
             records = tree.findall('.//o:record', NS)
             if not records:
@@ -60,7 +67,10 @@ def enumerate_oai(cache, year, target_issues):
                     else:
                         identifiers[identity] = (digest, url)
                 if header is not None and header.get('status') == 'deleted':
+                    deletions.append(dict(OAI_Identifier=identity,Datestamp=header.findtext('o:datestamp',default='',namespaces=NS),Evidence_URL=url))
                     continue
+                if set_spec and (header is None or set_spec not in [x.text for x in header.findall('o:setSpec',NS)]):
+                    raise ValueError('OAI record lacks requested set membership')
                 def values(name):
                     return [''.join(x.itertext()).strip() for x in record.findall('.//dc:' + name, NS)]
                 sources = values('source')
@@ -68,7 +78,9 @@ def enumerate_oai(cache, year, target_issues):
                 scope = re.search(r'Vol\.?\s*(\d+)\D+No\.?\s*(\d+)', english, re.I)
                 if not scope:
                     raise ValueError('OAI source cannot establish volume/issue scope')
-                if int(scope[1]) != year - 1986 or int(scope[2]) not in target_issues:
+                if set_spec and int(scope[1]) != year - 1986:
+                    raise ValueError('Annual OAI set contains wrong publication volume')
+                if int(scope[1]) != year - 1986 or (target_issues is not None and int(scope[2]) not in target_issues):
                     continue
                 ids = values('identifier')
                 article = next((u for u in ids if re.fullmatch(r'https://ojs.aaai.org/index.php/AAAI/article/view/\d+', u)), '')
@@ -89,9 +101,10 @@ def enumerate_oai(cache, year, target_issues):
             following = (token.text or '').strip() if token is not None else ''
             pages.append(dict(url=url, records=len(records), cumulative=consumed, next_token=following,
                               expected=expected, expiration=token.get('expirationDate') if token is not None else None))
-            write_json(cache.base / 'raw' / 'OAI_Pagination.json', dict(status='ENUMERATING', pages=pages, consumed=consumed, expected=expected))
-            write_csv(cache.base / 'raw' / 'OAI_Annual_Records.csv', rows)
-            write_csv(cache.base / 'raw' / 'OAI_Duplicate_Evidence.csv', duplicates)
+            write_json(raw / 'OAI_Pagination.json', dict(status='ENUMERATING', set_spec=set_spec, pages=pages, consumed=consumed, expected=expected))
+            write_csv(raw / 'OAI_Annual_Records.csv', rows)
+            write_csv(raw / 'OAI_Duplicate_Evidence.csv', duplicates)
+            write_csv(raw / 'OAI_Deletion_Evidence.csv', deletions)
             if not following:
                 if expected is not None and consumed != expected:
                     raise ValueError(f'OAI missing/truncated final token: {consumed}/{expected}')
@@ -99,12 +112,15 @@ def enumerate_oai(cache, year, target_issues):
             if expected is not None and consumed >= expected:
                 raise ValueError('OAI token continues beyond declared completeListSize')
             url = ROOT + '?' + urlencode({'verb': 'ListRecords', 'resumptionToken': following})
-        write_json(cache.base / 'raw' / 'OAI_Pagination.json', dict(status='COMPLETE', pages=pages, consumed=consumed, expected=expected))
+        if set_spec and any(r['Status']=='CONFLICTING_DUPLICATE_IDENTITY' for r in duplicates):
+            raise ValueError('Conflicting active/deleted OAI identities in annual set; evidence review required')
+        write_json(raw / 'OAI_Pagination.json', dict(status='COMPLETE', set_spec=set_spec, pages=pages, consumed=consumed, expected=expected))
         return rows
     except Exception as exc:
-        write_json(cache.base / 'raw' / 'OAI_Pagination.json', dict(status='INCOMPLETE', pages=pages, consumed=consumed, expected=expected, error=repr(exc)))
-        write_csv(cache.base / 'raw' / 'OAI_Annual_Records.csv', rows)
-        write_csv(cache.base / 'raw' / 'OAI_Duplicate_Evidence.csv', duplicates)
+        write_json(raw / 'OAI_Pagination.json', dict(status='INCOMPLETE', set_spec=set_spec, pages=pages, consumed=consumed, expected=expected, error=repr(exc)))
+        write_csv(raw / 'OAI_Annual_Records.csv', rows)
+        write_csv(raw / 'OAI_Duplicate_Evidence.csv', duplicates)
+        write_csv(raw / 'OAI_Deletion_Evidence.csv', deletions)
         raise OAIIncomplete(exc, rows) from exc
 
 

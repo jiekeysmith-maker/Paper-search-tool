@@ -190,13 +190,16 @@ def aaai(cache, collection):
     # explicitly excluded sections using the already preserved section evidence.
     from aaai_pipeline import OAIIncomplete
     try:
-        target_issues = {int(r['Issue']) for r in collection.publisher}
-        oai = aaai_oai(cache, year, target_issues)
+        from aaai_oai_sets import annual_records
+        oai = annual_records(cache, year)
         collection.evidence_complete = primary.keys() == independent_issues.keys()
     except OAIIncomplete as exc:
         oai = exc.rows
         collection.issue('Independent OAI enumeration incomplete: ' + str(exc))
         collection.evidence_complete = False
+        if not oai:
+            collection.save()
+            return
     except (ValueError, ET.ParseError) as exc:
         collection.issue('Independent OAI enumeration failed: ' + str(exc))
         collection.save()

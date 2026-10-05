@@ -146,7 +146,8 @@ def test_aaai_two_independent_enumerations_and_section_scope(tmp_path):
     pages = {'https://aaai.org/proceeding/aaai-40-2026/': link,
              'https://ojs.aaai.org/index.php/AAAI/issue/archive': link,
              url: str(soup), article['url']: body,
-             'https://ojs.aaai.org/index.php/AAAI/oai?verb=ListRecords&metadataPrefix=oai_dc': xml}
+             'https://ojs.aaai.org/index.php/AAAI/oai?verb=ListSets': '<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/"><ListSets><set><setSpec>AAAI:AI26-1</setSpec><setName>AAAI Technical Track on Application Domains</setName></set></ListSets></OAI-PMH>',
+             'https://ojs.aaai.org/index.php/AAAI/oai?verb=ListRecords&metadataPrefix=oai_dc&set=AAAI%3AAI26-1': xml.replace('<header/>','<header><setSpec>AAAI:AI26-1</setSpec></header>')}
     c = Collection(Site(tmp_path, 'AAAI', 2026, pages))
     aaai(c.cache, c)
     assert len(c.corpus) == 1

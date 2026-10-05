@@ -1,0 +1,22 @@
+[
+  {
+    "url": "https://ojs.aaai.org/index.php/AAAI/oai?verb=ListSets",
+    "file": "page_1.xml",
+    "sha256": "c2b973970c93bc0e449a5b91e876e152adacc6dfb3c6eb55fc0000b4b2e3da9e"
+  },
+  {
+    "url": "https://ojs.aaai.org/index.php/AAAI/oai?verb=ListSets&resumptionToken=8b29e4ada0141081e31e1813b8320bf2",
+    "file": "page_2.xml",
+    "sha256": "3d1484abb890a646f85300c0236c37160dcfd19a3c884fe55d017e5b250f614f"
+  },
+  {
+    "url": "https://ojs.aaai.org/index.php/AAAI/oai?verb=ListSets&resumptionToken=eda4f49c7fb73ff2209265f524cc359d",
+    "file": "page_3.xml",
+    "sha256": "aaec41cf78fd72b75a6403c98c38758f12fdcdd73eba654cf4b70038f64d2e3b"
+  },
+  {
+    "url": "https://ojs.aaai.org/index.php/AAAI/oai?verb=ListSets&resumptionToken=c36b53f40136a945e0d5feb6b78fd17c",
+    "file": "page_4.xml",
+    "sha256": "685d6cd8c85535d0078be69ac3b39fee1020dfa122e739f35205b71b016dd464"
+  }
+]
