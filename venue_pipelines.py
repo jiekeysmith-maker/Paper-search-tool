@@ -306,7 +306,20 @@ def eccv(cache, collection):
         collection.issue('Independent ECVA enumeration unavailable: ' + str(exc))
     books, seen, queue, failures = {}, set(), sorted(roots), []
     access_blocked = False
-    while queue:
+    home_checked = year != 2026
+    while queue or not home_checked:
+        if not queue:
+            home_checked = True
+            from eccv_evidence import conference_volumes
+            home = 'https://eccv.ecva.net/'
+            try:
+                official_volumes = conference_volumes(cache.get(home),home,year)
+                write_json(cache.base/'raw/Conference_Volume_Inventory.json',official_volumes)
+                known_parts={book['Part'] for book in books.values()}
+                queue.extend(r['Official_URL'] for r in official_volumes if r['Part'] not in known_parts)
+            except Exception as exc:
+                collection.issue('Official conference volume inventory unavailable: '+repr(exc))
+            continue
         url = queue.pop(0)
         url = re.sub(r'\?page=1$', '', url)
         if url in seen:
@@ -326,6 +339,8 @@ def eccv(cache, collection):
             write_json(cache.base / 'raw' / 'Volume_Failures.json', failures)
             continue
         doi = book['Book_DOI']
+        if 'page=' not in url:
+            seen.add('https://link.springer.com/book/'+doi)
         previous = books.get(doi)
         if previous:
             if any(previous[k] != book[k] for k in ('Part', 'LNCS_Volume', 'Declared_Chapter_Count')):
@@ -360,10 +375,27 @@ def eccv(cache, collection):
         collection.issue('No complete official volume inventory/count corroborates discovered other-volumes')
     if paper_counts and paper_counts != {len(collection.publisher)}:
         collection.issue(f'Conference declared paper counts {sorted(paper_counts)} differ from enumerated {len(collection.publisher)}')
+    write_csv(cache.base/'raw/Publisher_All_Chapter_Records.csv',collection.publisher)
+    from eccv_evidence import correction_evidence
+    target=[]
+    for row in collection.publisher:
+        proof=None
+        if row['Title'].startswith('Correction to:'):
+            try:
+                proof=correction_evidence(cache.get(row['Official_URL']),row['Official_URL'],year)
+            except Exception as exc:
+                collection.issue('Correction classification unavailable: '+repr(exc),Official_URL=row['Official_URL'])
+        if proof:
+            collection.excluded.append(proof)
+        else:
+            target.append(row)
+    collection.publisher=target
     def detail(html, row):
         result = adapter.detail(html, row['Official_URL'], year, row['Book_DOI'], utc())
         # TOC authors may be truncated. Reconciliation uses full chapter citation authors.
         row['Authors'] = result['Authors']
+        row['TOC_Title'],row['Title']=row['Title'],result['Title']
+        result['Retrieval_Source']=row['Official_URL']
         return result
     collection.save()
     # Preserve all accessible TOCs, but do not request thousands of details when

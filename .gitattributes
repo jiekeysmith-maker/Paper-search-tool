@@ -2,3 +2,6 @@
 config/screening_rules_v1_2.yaml text eol=lf
 # Evidence hashes refer to original snapshot bytes, including line endings.
 tests/fixtures/snapshots/*.html -text
+tests/fixtures/next/*.html -text
+tests/fixtures/aaai_oai_sets/*.xml -text
+tests/fixtures/eccv_corrections/*.html -text

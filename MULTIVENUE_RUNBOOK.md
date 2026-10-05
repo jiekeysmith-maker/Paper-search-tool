@@ -1,19 +1,21 @@
 # 多 Venue 人工运行手册
 
-更新：2026-10-05（Asia/Shanghai）。开发分支：`manual-multivenue`。
+更新：2026-10-05（Asia/Shanghai）。开发分支：`manual-multivenue-next`。
 
 代码目录：`D:\_Knowledge Distillation\worktrees\kd_manual_clean_20261004`。
 数据根目录：`D:\_Knowledge Distillation\Paper Library`。
 
-本轮仅完成程序开发、离线测试和小规模烟测，下面的正式库命令没有被执行。不要到稳定仓库目录运行新入口。
+本轮真实全年验收仅写入开发 worktree 的 `output/production_acceptance`。下面的正式库命令没有被执行。不要到稳定仓库目录运行新入口，不要对正在运行的 ICML/ICLR 年度重复启动任务。
 
 ## 1. 当前可用程度
 
-ICML、ICLR 已接通受审计门槛保护的人工采集入口；某年 REVIEW_REQUIRED 是未完成年度，不是筛选成功。ICML 2025/2026 旧证据的新离线审计仍分别有 1/103 条未解决记录，禁止据此直接筛选。
+ICML、ICLR 保持既有生产实现；本手册不据历史验收数字推断它们当前生产任务的状态。
 
-AAAI、ECCV：**NOT_READY_FOR_PRODUCTION**。年度编排代码及离线集成已接通，但 AAAI 的真实全年 OAI 分页链尚未验收；ECCV 的真实完整多卷抓取和 2388/2387 目录差异尚未解释。本手册保留它们的真实执行命令供后续人工验收；不能把命令存在或少量烟测通过当作全年生产认证。
+AAAI：**PRODUCTION_READY**。2024/2025/2026 分别 2517/3182/4417 篇，年度 OAI ListSets 全链与出版社逐项核验，三年均 VERIFIED 且已完成正式 V1.2。见 `AAAI_ACCEPTANCE.md`，不要重复已完成的开发验收。
 
-TPAMI：`UNSUPPORTED / NOT_IMPLEMENTED`。CVPR 在此入口明确拒绝，原有生产代码未改动。
+ECCV：完整性差异仍需复核，不能把有可靠元数据等同于 VERIFIED。2024 的 2388 个出版社条目包含两个有原论文链接的更正通知；剩余差异必须逐项查看，不能仅凭数量闭合。
+
+TPAMI：已有 IEEE adapter 和年度 pipeline，但公开官方全集来源尚未完成验收，**NOT_READY**。CVPR 在此入口明确拒绝，原有生产代码未改动。
 
 ## 2. 四个独立终端
 
@@ -31,7 +33,7 @@ D:\Anaconda\python.exe -X utf8 -B "D:\_Knowledge Distillation\worktrees\kd_manua
 D:\Anaconda\python.exe -X utf8 -B "D:\_Knowledge Distillation\worktrees\kd_manual_clean_20261004\run_venue.py" --venue ICLR --years 2024 2025 2026 --library-root "D:\_Knowledge Distillation\Paper Library"
 ```
 
-终端 3，AAAI 2024 → 2025 → 2026（尚待生产验收）：
+终端 3，AAAI 2024 → 2025 → 2026：
 
 ```text
 D:\Anaconda\python.exe -X utf8 -B "D:\_Knowledge Distillation\worktrees\kd_manual_clean_20261004\run_venue.py" --venue AAAI --years 2024 2025 2026 --library-root "D:\_Knowledge Distillation\Paper Library"
@@ -137,11 +139,11 @@ screening/Run_Manifest.json
 ## 7. 保护与限制
 
 - 正式根目录的 ICML2024 被入口直接保护，连锁/日志都不写入；可在 worktree output 的合成库测试同年接口。
-- CVPR2025/2026 和 TPAMI 不在新入口支持范围。
+- CVPR2025/2026 不在新入口支持范围。TPAMI 有实验入口，但未获生产认证。
 - 冻结 YAML SHA256：`4a94a8346cce3ab8dae5153ba9c07041371f783902d0bdb55becbc0d9c0cf514`。
 - 缺少官方正式出版、无法访问或年份尚未公开时失败关闭，不以录用名单或声明数量冒充正式全集。
 - AAAI 纳入 Technical Track，以及可明确识别的 Social Impact / Alignment 正式 Special Track；其他特殊名称为 UNCERTAIN 需复核。排除附属活动、学生摘要、workshop 等已识别非目标章节。
-- 本轮没有下载 PDF、人工二筛、全量网络抓取或修改正式库。
+- 本轮进行了开发目录中的全年验收，没有下载 PDF、人工二筛或修改正式库。
 
 ## 8. 离线测试与有限烟测
 
@@ -153,4 +155,18 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
 D:\Anaconda\python.exe -m pytest -q -p no:cacheprovider --basetemp=output/manual_tests_next tests/test_allvenues_adapters.py tests/test_iclr_adapter.py tests/test_metadata_transport.py tests/test_ojs_adapter.py tests/test_springer_adapter.py tests/test_manual_screening.py tests/test_venue_pipeline.py tests/test_pipeline_enumeration.py
 ```
 
-测试禁止 DNS/网络。最终开发验收为 123 passed。可人工执行 `D:\Anaconda\python.exe -X utf8 -B smoke_venues.py` 做有限烟测：目录固定为 worktree `output\smoke`，每平台 1 篇详情、最多 6 个新 URL 请求（每请求最多 3 次有界 HTTP 尝试），不运行年度 pipeline。已有快照会被复用，`requests=0` 表示缓存复核，不是再次联网成功；原始请求证据在 Fetch_Manifest 中。
+测试禁止 DNS/网络，实际测试数量以本轮报告为准。可人工执行 `D:\Anaconda\python.exe -X utf8 -B smoke_venues.py` 做有限烟测：目录固定为 worktree `output\smoke`，每平台 1 篇详情、最多 6 个新 URL 请求（每请求最多 3 次有界 HTTP 尝试），不运行年度 pipeline。已有快照会被复用，`requests=0` 表示缓存复核，不是再次联网成功；原始请求证据在 Fetch_Manifest 中。
+
+## 9. 显式 provisional 一筛
+
+正式 `screen_verified.py` Gate 不变。仅当年度真实状态是 REVIEW_REQUIRED、没有 Formal Corpus，而且 PROVISIONAL 文件具有可验证的唯一身份和可靠字段时，人工显式运行辅助入口：
+
+```text
+D:\Anaconda\python.exe -X utf8 -B "D:\_Knowledge Distillation\worktrees\kd_manual_clean_20261004\screen_provisional.py" ECCV 2024 --library-root "D:\_Knowledge Distillation\worktrees\kd_manual_clean_20261004\output\production_acceptance\attempts\eccv_recovery_02" --write
+```
+
+去掉 `--write` 只验证和计算，不发布文件。输出放在该年度独立的 `screening_provisional`，不会冒充正式 `screening`。Manifest 明确记录 `provisional_screening=true`、真实 `corpus_audit_status`、`unresolved_count`、输入和输出哈希。各 CSV 也带有 provisional 标记。
+
+候选池为 `screening_provisional/Needs_Secondary_Review.csv`，仍仅是 KEEP + MAYBE + AMBIGUOUS 待人工复核集合。缺少 Abstract 等必需元数据的记录保留在 `Metadata_Excluded_From_Screening.csv`，不编造内容、不参与一筛。重复身份或范围错误拒绝整次发布。已有输出不覆盖。
+
+`accept_production.py` 的新 attempt 可只读引用旧 acceptance 快照，每次使用都重新校验字节哈希，并在自己的 registry 和 Fetch_Manifest 记录来源；新请求仍由原有 FetchCache 保存。正式生产 FetchCache 和锁机制未改变。

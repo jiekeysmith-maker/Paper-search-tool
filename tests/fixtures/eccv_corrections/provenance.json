@@ -1,0 +1,16 @@
+[
+  {
+    "file": "978-3-031-73636-0_28.html",
+    "url": "https://link.springer.com/chapter/10.1007/978-3-031-73636-0_28",
+    "source_sha256": "f03948e7f11d3312a67927640ad280b9f30b2f449ee5836c499393bc350c0e96",
+    "fixture_sha256": "dc53cf9fe334cceb7efabff922b5c6f673b065fea32885b1b060adfd750fb8fd",
+    "extraction": "Citation meta tags and original-link enclosing element only; no invented text"
+  },
+  {
+    "file": "978-3-031-73209-6_27.html",
+    "url": "https://link.springer.com/chapter/10.1007/978-3-031-73209-6_27",
+    "source_sha256": "a7ea1f9430a7195b3281469bd2e6472c886985b24cfee322f54384b3fdd0afa6",
+    "fixture_sha256": "b80e4f6c5ac0e77ed4c77b2cd735a46a8b46968fba274c1856e4aa77e9f08a4c",
+    "extraction": "Citation meta tags and original-link enclosing element only; no invented text"
+  }
+]

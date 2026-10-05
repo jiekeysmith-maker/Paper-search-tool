@@ -110,6 +110,25 @@ def test_declared_count_does_not_prove_chapters_complete(tmp_path):
     assert audit(tmp_path, 'ECCV', 2024, c.publisher, c.corpus, c.program, evidence_complete=True, issues=c.issues)['status'] == 'REVIEW_REQUIRED'
 
 
+def test_eccv_official_part_alias_recovers_missing_volume(tmp_path):
+    d1,d2='10.1007/978-1','10.1007/978-2'
+    u1,u2=('https://link.springer.com/book/'+d for d in (d1,d2))
+    alias='https://link.springer.com/book/9780000000002'
+    pages={'https://link.springer.com/conference/eccv':f'<a href="{u1}">Computer Vision – ECCV 2026</a>',
+           'https://eccv.ecva.net/':f'<h1>ECCV 2026</h1><a href="{u1}">I</a><a href="{alias}">II</a>',
+           u1:book(d1,'I',1,[1]).replace('2024','2026'),
+           alias:book(d2,'II',2,[2],f'<a href="{u2}?page=1">1</a><a href="{u2}?page=2">2</a>').replace('2024','2026'),
+           u2+'?page=2':book(d2,'II',2,[3]).replace('2024','2026'),
+           'https://www.ecva.net/papers.php':''.join(f'<dt class="ptitle"><a href="papers/eccv_2026/papers_ECCV/html/{n}.html">Paper {n}</a></dt><dd><a>Alice</a></dd>' for n in (1,2,3)),
+           **{f'https://link.springer.com/chapter/{d}_{n}':chapter(d,n).replace('2024','2026') for d,n in ((d1,1),(d2,2),(d2,3))}}
+    cache=Site(tmp_path,'ECCV',2026,pages);c=Collection(cache)
+    eccv(cache,c)
+    assert len(c.corpus)==3
+    assert cache.visited.count(alias)==1 and u2 not in cache.visited
+    assert u2+'?page=1' not in cache.visited
+    assert not any('Expected' in x['Reason'] or 'incomplete' in x['Reason'] for x in c.issues)
+
+
 def test_screening_failure_preserves_verified_gate_for_manual_retry(tmp_path, monkeypatch):
     def success(cache, c):
         r = dict(Paper_ID='fixture', Title='Distillation', Abstract='Teacher and student', Authors='Alice',

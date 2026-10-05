@@ -12,12 +12,57 @@ SEED_ROOT = ROOT
 OFFLINE = False
 
 
+class AcceptanceCache(FetchCache):
+    """Read-only reuse of prior acceptance snapshots, checked on every access.
+
+    Production FetchCache is unchanged. New requests still use its atomic cache.
+    The attempt's registry/manifest records every reused path and content hash.
+    """
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.reusable={};self.reused={}
+
+    def import_registry(self,registry,allowed_urls):
+        if self.refresh_evidence or not registry.exists():return
+        data=json.loads(registry.read_text(encoding='utf-8-sig'))
+        if data.get('venue')!=self.venue or data.get('year')!=self.year:
+            raise ValueError('Acceptance registry scope mismatch')
+        for entry in data.get('source_snapshots',[]):
+            if entry.get('url') in allowed_urls:
+                self.validate_url(entry['url'])
+                self.reusable.setdefault(entry['url'],entry)
+
+    def get(self,url):
+        body,meta=self.paths(url)
+        if body.exists() or meta.exists() or self.refresh_evidence or url not in self.reusable:
+            return super().get(url)
+        self.validate_url(url);entry=self.reusable[url];source=Path(entry['snapshot'])
+        if not source.is_file():return super().get(url)
+        payload=source.read_bytes()
+        if (entry.get('http_status')!=200 or entry.get('sha256')!=sha256(payload).hexdigest()
+                or entry.get('bytes')!=len(payload)):
+            raise ValueError('Acceptance snapshot integrity failure: '+str(source))
+        text=payload.decode('utf-8-sig');self.hits+=1
+        self.reused[url]={**entry,'venue':self.venue,'year':self.year,'imported_from':str(source),'read_only_reuse':True}
+        return text
+
+    def manifest(self):
+        entries=super().manifest()
+        own={x['url'] for x in entries}
+        entries.extend(v for k,v in self.reused.items() if k not in own)
+        write_json(self.base/'runtime/Fetch_Manifest.json',entries)
+        return entries
+
+
 def seed(cache):
     """Reuse validated snapshots, never copy a previous audit or mutable state."""
     venue, year = cache.venue, cache.year
     sources = [Path(__file__).resolve().parent / 'output' / 'smoke' / venue / str(year) / 'runtime/cache']
     if ROOT != SEED_ROOT:
         sources.append(SEED_ROOT / venue / str(year) / 'runtime/cache')
+    if venue == 'ECCV':
+        sources.append(SEED_ROOT / venue / 'source_investigation/runtime/cache')
+        sources += [p for p in (SEED_ROOT / 'attempts').glob(f'*/{venue}/{year}/runtime/cache') if p != cache.directory]
     if venue == 'AAAI':
         sources += [root / venue / str(y) / 'runtime/cache' for root in {ROOT, SEED_ROOT} for y in (2024, 2025, 2026) if y != year]
         sources.append(SEED_ROOT / venue / 'source_investigation/runtime/cache')
@@ -52,7 +97,7 @@ def cache_factory(base, venue, year, **kwargs):
         def no_network(url, **unused):
             raise RuntimeError('OFFLINE_CACHE_MISS: '+url)
         kwargs['fetch']=no_network
-    c = FetchCache(base, venue, year, **kwargs)
+    c = AcceptanceCache(base, venue, year, **kwargs)
     seed(c)
     return c
 
