@@ -65,6 +65,7 @@ def seed(cache):
         sources.append(SEED_ROOT / venue / str(year) / 'runtime/cache')
     if venue == 'ECCV':
         sources.append(SEED_ROOT / venue / 'source_investigation/runtime/cache')
+        sources += list((SEED_ROOT / venue).glob('identity_probe_*/runtime/cache'))
         sources += [p for p in (SEED_ROOT / 'attempts').glob(f'*/{venue}/{year}/runtime/cache') if p != cache.directory]
     if venue == 'AAAI':
         sources += [root / venue / str(y) / 'runtime/cache' for root in {ROOT, SEED_ROOT} for y in (2024, 2025, 2026) if y != year]

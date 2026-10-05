@@ -44,6 +44,27 @@ def conference_volumes(html,url,year):
     return rows
 
 
+def publication_link(html,url,year,expected_title):
+    """An ECVA paper's explicit DOI link, never a reference-list DOI."""
+    from eccv_identity import title_key
+    parsed=urlparse(url)
+    if parsed.hostname!='www.ecva.net' or not parsed.path.startswith(f'/papers/eccv_{year}/papers_ECCV/html/'):
+        raise ValueError('Wrong ECVA paper/year scope')
+    soup=BeautifulSoup(html,'html.parser')
+    title=soup.select_one('#papertitle');abstract=soup.select_one('#abstract')
+    if not title or title_key(title.get_text(' ',strip=True))!=title_key(expected_title) or not abstract:
+        raise ValueError('ECVA detail identity does not match enumeration')
+    targets=set()
+    for a in soup.select('#content a[href]'):
+        if a.get_text(' ',strip=True).casefold()!='doi' or a.find_parent(id='abstract'):continue
+        target=urljoin(url,a['href'])
+        if re.fullmatch(r'https://link\.springer\.com/chapter/10\.1007/[^?#\s]+',target):targets.add(target)
+    if len(targets)!=1:raise ValueError('Missing/ambiguous explicit ECVA publication DOI link')
+    target=targets.pop()
+    return dict(DOI=target.split('/chapter/')[1],Publication_Link=target,
+                Publication_Link_Evidence=url,Publication_Link_Type='ECVA_EXPLICIT_DOI')
+
+
 def correction_evidence(html,url,year):
     soup=BeautifulSoup(html,'html.parser')
     def meta(name):

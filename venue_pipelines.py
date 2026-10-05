@@ -462,6 +462,25 @@ def eccv(cache, collection):
     finally:
         collection.publisher=[r for r in collection.publisher if r['Official_URL'] not in excluded_urls]
         collection.save()
+    # Fetch only unresolved independent identities. Their own official DOI links
+    # can corroborate major publication-title changes without fuzzy inference.
+    from eccv_identity import reconcile_eccv
+    from eccv_evidence import publication_link
+    preliminary,_=reconcile_eccv(collection.publisher,collection.program)
+    pending={r.get('Independent_URL') for r in preliminary if r['Status']=='ECVA_ONLY_UNRESOLVED'}
+    link_evidence=[]
+    for row in collection.program:
+        if row.get('Official_URL') not in pending or 'www.ecva.net/papers/' not in row.get('Official_URL',''):continue
+        try:
+            proof=publication_link(access.get(row['Official_URL']),row['Official_URL'],year,row['Title'])
+            row.update(proof)
+            link_evidence.append(dict(Independent_URL=row['Official_URL'],**proof))
+        except Exception as exc:
+            # Failed auxiliary identity evidence is not a missing paper. The
+            # unresolved comparison remains in the main audit.
+            link_evidence.append(dict(Independent_URL=row['Official_URL'],error=repr(exc)))
+        write_json(cache.base/'raw/ECVA_Publication_Links.json',link_evidence)
+    collection.save()
     collection.evidence_complete = bool(collection.program) and not failures and not access.blocked and not collection.issues
 
 

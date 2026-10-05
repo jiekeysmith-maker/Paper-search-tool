@@ -1,0 +1,29 @@
+# Development continuation
+
+Workspace: `D:\_Knowledge Distillation\worktrees\kd_manual_clean_20261004`
+Branch: `manual-multivenue-next`. Starting checkpoint: `c40a76f`.
+Read current Git HEAD/status/diff before resuming; do not reset WIP.
+
+## 2026-10-06 current stage: ECCV
+
+- Restored interrupted identity tests (previous file had invalid decorator syntax).
+- ECCV-only non-greedy title/author reconciliation and abstract/DOI checks integrated into audit.
+- HTML double escaping, accents, initials, author order are handled. Full-name aliases are not guessed.
+- Explicit ECVA paper DOI links now provide independently traceable publication identity; large retitles without such evidence remain candidates.
+- Official four-page probe found direct matching Springer links for ShapeFusion, UAV and Avatar.
+- Zero-shot ECVA page links to `10.1007/978-3-031-72890-7_21`; direct publisher request returned HTTP 404. Do not infer withdrawal or exclude it. Keep ECVA-only unresolved. Evidence: `output/production_acceptance/ECCV/identity_probe_20261006/reports/`.
+- Offline ECCV2024 full replay is running in attempt `eccv_identity_20261006` (started before explicit DOI enrichment patch). Check PID/lock and output; do not start a duplicate. Latest own PID was 16092; verify liveness, never assume.
+- Small offline groups passed: 77 tests (ECCV + AAAI); 73 tests (identity/gate, pipeline, manual screening, ICLR); latest 72 tests (identity DOI, ECCV recovery, evidence, pipeline, acceptance reuse, AAAI). Groups overlap; do not sum as unique total.
+- Frozen V1.2 SHA256 confirmed `4a94a8346cce3ab8dae5153ba9c07041371f783902d0bdb55becbc0d9c0cf514`.
+- No production checkout or Paper Library writes; no push or merge.
+
+## Next exact actions
+
+1. Finish/read ECCV2024 offline replay, then re-audit its records with cached explicit ECVA DOI proofs in a new isolated output. Preserve all original evidence.
+2. Review remaining source conflicts, add any missing regression, commit completed ECCV stage.
+3. Only then investigate TPAMI prototype and public source structures. Remove hardcoded 12-issue completeness assumptions. Preserve final issue year policy, Early Access identity/date separation, strict gate. Public pages only, no restricted REST or access bypass.
+4. TPAMI 2024 end-to-end acceptance is required; 2025/2026 follow sequentially if sources permit. Do not claim production readiness from mocked tests.
+
+## Native continuation
+
+Codex heartbeat automation ID `eccv-tpami` is ACTIVE every 330 minutes, attached to this thread. It was actually created with the app tool. First run is measured from creation (absolute DTSTART was rejected by the native immediate-create API). Stop this automation only after both ECCV and TPAMI meet the user's development completion criteria. Do not touch the unrelated paused legacy automation.

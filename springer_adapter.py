@@ -50,6 +50,10 @@ class SpringerECCVAdapter:
         if m('citation_inbook_title')!=f'Computer Vision – ECCV {year}' or m('citation_conference_abbrev')!='ECCV':raise ValueError('Wrong conference/year/workshop')
         if doi!=url.split('/chapter/')[1] or m('citation_abstract_html_url')!=url:raise ValueError('DOI/canonical URL mismatch')
         if not abstract or not abstract.get_text(' ',strip=True) or not ms('citation_author'):raise ValueError('Missing abstract/authors')
+        from eccv_metadata import abstract_issue
+        invalid=abstract_issue(m('citation_title'),abstract.get_text(' ',strip=True))
+        if invalid or abstract.select('nav,script,form'):raise ValueError(invalid or 'Non-abstract markup in abstract container')
+        if not m('citation_title').strip():raise ValueError('Missing title')
         if not m('citation_firstpage') or not m('citation_publication_date'):raise ValueError('Missing publication evidence')
         metadata={x.get('name'):x.get('content') for x in s.select('meta[name^="citation_"]') if x.get('name') not in ['citation_author','citation_author_email','citation_author_institution']};metadata['citation_author']=ms('citation_author')
         # Each citation_author is one complete person, commonly "Family, Given".

@@ -105,8 +105,17 @@ def reconcile(publisher, program):
 
 def audit(base, venue, year, publisher, corpus, program, *, evidence_complete, issues=(), excluded=()):
     raw = base / 'raw'
-    comparisons, independent_count = reconcile(publisher, program)
+    if venue == 'ECCV':
+        from eccv_identity import reconcile_eccv
+        comparisons, independent_count = reconcile_eccv(publisher, program)
+    else:
+        comparisons, independent_count = reconcile(publisher, program)
     extra = list(issues) + validate_rows(corpus, venue, year)
+    eccv_summary={}
+    if venue == 'ECCV':
+        from eccv_metadata import check_corpus
+        metadata_issues,eccv_summary=check_corpus(corpus,publisher)
+        extra.extend(metadata_issues)
     if venue == 'TPAMI':
         from tpami_policy import corpus_issues
         extra.extend(corpus_issues(base, corpus))
@@ -132,6 +141,7 @@ def audit(base, venue, year, publisher, corpus, program, *, evidence_complete, i
                   independent_unique_count=independent_count, utc=utc(),
                   counts_by_class=dict(Counter(r['Status'] for r in comparisons)),
                   difference_rows_are_not_missing_paper_counts=True)
+    result.update(eccv_summary)
     if not opened:
         formal = raw / 'Formal_Proceedings_Corpus.csv'
         if formal.exists():
