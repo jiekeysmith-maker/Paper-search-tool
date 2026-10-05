@@ -29,7 +29,16 @@ def atomic_bytes(path, data):
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temp, path)
+        # Windows readers/antivirus may briefly deny replacement. Retry only this
+        # atomic operation, bounded; never truncate the previous published file.
+        for attempt in range(6):
+            try:
+                os.replace(temp, path)
+                break
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.1 * (attempt + 1))
     finally:
         temp.unlink(missing_ok=True)
 
