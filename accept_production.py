@@ -8,14 +8,17 @@ from venue_runtime import FetchCache, write_json, utc
 from screen_verified import verified_corpus
 
 ROOT = Path(__file__).resolve().parent / 'output' / 'production_acceptance'
+SEED_ROOT = ROOT
 
 
 def seed(cache):
     """Reuse validated snapshots, never copy a previous audit or mutable state."""
     venue, year = cache.venue, cache.year
     sources = [Path(__file__).resolve().parent / 'output' / 'smoke' / venue / str(year) / 'runtime/cache']
+    if ROOT != SEED_ROOT:
+        sources.append(SEED_ROOT / venue / str(year) / 'runtime/cache')
     if venue == 'AAAI':
-        sources += [ROOT / venue / str(y) / 'runtime/cache' for y in (2024, 2025, 2026) if y != year]
+        sources += [root / venue / str(y) / 'runtime/cache' for root in {ROOT, SEED_ROOT} for y in (2024, 2025, 2026) if y != year]
     if venue == 'TPAMI':
         sources += [ROOT / venue / str(y) / 'runtime/cache' for y in (2024, 2025, 2026) if y != year]
     entries = []
@@ -48,10 +51,17 @@ def cache_factory(base, venue, year, **kwargs):
 
 
 def main():
+    global ROOT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--venue', required=True, choices=['AAAI', 'ECCV', 'TPAMI'])
     parser.add_argument('--years', required=True, nargs='+', type=int)
+    parser.add_argument('--attempt', help='New isolated acceptance attempt; preserves previous raw/reports')
     args = parser.parse_args()
+    if args.attempt:
+        import re
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,48}',args.attempt):
+            parser.error('attempt must be a simple directory name')
+        ROOT = SEED_ROOT / 'attempts' / args.attempt
     validate_request(args.venue, args.years)
     for year in args.years:
         print(f'ACCEPTANCE {args.venue} {year}: START', flush=True)

@@ -188,25 +188,47 @@ def aaai(cache, collection):
         collection.save()
     # Enumerate every article in target-containing issues independently, then account for
     # explicitly excluded sections using the already preserved section evidence.
+    from aaai_pipeline import OAIIncomplete
     try:
         target_issues = {int(r['Issue']) for r in collection.publisher}
         oai = aaai_oai(cache, year, target_issues)
-        excluded_urls = {r['Official_URL'] for r in collection.excluded}
-        collection.program = [r for r in oai if r['Official_URL'] not in excluded_urls]
         collection.evidence_complete = primary.keys() == independent_issues.keys()
+    except OAIIncomplete as exc:
+        oai = exc.rows
+        collection.issue('Independent OAI enumeration incomplete: ' + str(exc))
+        collection.evidence_complete = False
     except (ValueError, ET.ParseError) as exc:
         collection.issue('Independent OAI enumeration failed: ' + str(exc))
         collection.save()
         return
+    excluded_urls = {r['Official_URL'] for r in collection.excluded}
+    collection.program = [r for r in oai if r['Official_URL'] not in excluded_urls]
     from aaai_pipeline import from_oai
-    by_url = {r['Official_URL']: r for r in collection.program}
+    by_url = {}
+    ambiguous = set()
+    for row in collection.program:
+        url = row['Official_URL']
+        if url in by_url:
+            ambiguous.add(url)
+        by_url[url] = row
+    for url in ambiguous:
+        by_url.pop(url)
+        collection.issue('Multiple official OAI records require detail verification', 'DUPLICATE_IDENTITY', Official_URL=url)
     missing = []
     for row in collection.publisher:
         try:
             collection.corpus.append(from_oai(row, by_url[row['Official_URL']], year))
         except (KeyError, ValueError):
             missing.append(row)
-    collection.details(lambda html, row: adapter.detail(html, row['Official_URL'], year, int(row['Volume']), int(row['Issue']), utc()), missing)
+    def detail(html, row):
+        result = adapter.detail(html, row['Official_URL'], year, int(row['Volume']), int(row['Issue']), utc())
+        result['Retrieval_Source'] = row['Official_URL']
+        return result
+    try:
+        collection.details(detail, missing)
+    finally:
+        from aaai_pipeline import quality_report
+        quality_report(collection)
 
 
 def ecva_index(html, year):
