@@ -66,8 +66,8 @@ def test_official_publication_link_supports_retitle_and_name_variant():
     p['DOI']='10.1007/example_1'
     q=row('Localized human diffusion models','Alice Smith; Michael Adams; Carol Brown; David Young',
           'https://www.ecva.net/papers/eccv_2024/papers_ECCV/html/1.html')
-    html='<div id="content"><div id="papertitle">Localized human diffusion models</div><div id="abstract">An actual abstract.</div><a href="https://link.springer.com/chapter/10.1007/example_1">DOI</a></div>'
-    q.update(publication_link(html,q['Official_URL'],2024,q['Title']))
+    html='<div id="content"><div id="papertitle">Localized human diffusion models</div><div id="authors">Alice Smith, Michael Adams, Carol Brown, David Young*</div><div id="abstract">An actual abstract.</div><a href="https://link.springer.com/chapter/10.1007/example_1">DOI</a></div>'
+    q.update(publication_link(html,q['Official_URL'],2024,q['Title'],q['Authors']))
     result,_=reconcile_eccv([p],[q])
     assert result[0]['Resolved'] and result[0]['Identity_Evidence']=='ECVA_EXPLICIT_DOI'
 
@@ -75,9 +75,9 @@ def test_official_publication_link_supports_retitle_and_name_variant():
 def test_reference_doi_and_wrong_year_are_not_publication_evidence():
     from eccv_evidence import publication_link
     url='https://www.ecva.net/papers/eccv_2024/papers_ECCV/html/1.html'
-    html='<div id="content"><div id="papertitle">A model</div><div id="abstract">See <a href="https://link.springer.com/chapter/10.1007/example_1">DOI</a></div></div>'
-    with pytest.raises(ValueError):publication_link(html,url,2024,'A model')
-    with pytest.raises(ValueError):publication_link(html,url,2026,'A model')
+    html='<div id="content"><div id="papertitle">A model</div><div id="authors">Alice Smith</div><div id="abstract">See <a href="https://link.springer.com/chapter/10.1007/example_1">DOI</a></div></div>'
+    with pytest.raises(ValueError):publication_link(html,url,2024,'A model','Alice Smith')
+    with pytest.raises(ValueError):publication_link(html,url,2026,'A model','Alice Smith')
 
 
 def test_title_does_not_override_author_conflict():
@@ -90,10 +90,34 @@ def test_competing_titles_fail_closed():
     assert not any(r['Resolved'] for r in result)
 
 
+@pytest.mark.parametrize('a,b',[
+ ('A comprehensive model for learning part 1','A comprehensive model for learning part 2'),
+ ('A comprehensive model for learning++','A comprehensive model for learning'),
+])
+def test_different_numbered_or_math_variants_need_official_proof(a,b):
+    result,_=reconcile_eccv([row(a,url='https://publisher.example/a')],[row(b)])
+    assert not any(r['Resolved'] for r in result)
+
+
 def test_unmatched_independent_record_is_not_deleted():
     result,count=reconcile_eccv([], [row('Zero-shot Text-guided Infinite Image Synthesis with LLM guidance')])
     assert count==1 and result[0]['Status']=='ECVA_ONLY_UNRESOLVED'
     assert not result[0]['Resolved']
+
+
+def test_duplicate_occurrences_are_not_two_unique_papers():
+    r=row('A model')
+    result,count=reconcile_eccv([], [r,r.copy()])
+    assert count==1
+    assert any(x['Status']=='DUPLICATE_IDENTITY' and not x['Resolved'] for x in result)
+
+
+def test_explicit_doi_without_publisher_counterpart_stays_unresolved():
+    r=row('Independent paper')
+    r.update(DOI='10.1007/absent_21',Publication_Link='https://link.springer.com/chapter/10.1007/absent_21',
+             Publication_Link_Type='ECVA_EXPLICIT_DOI',Publication_Link_Evidence=r['Official_URL'])
+    result,_=reconcile_eccv([], [r])
+    assert result[0]['Status']=='ECVA_ONLY_UNRESOLVED' and not result[0]['Resolved']
 
 
 @pytest.mark.parametrize('abstract',['','Abstract unavailable','Please sign in to view chapter'])

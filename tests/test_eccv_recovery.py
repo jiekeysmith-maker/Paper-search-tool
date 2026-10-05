@@ -27,6 +27,20 @@ def test_complete_small_publisher_and_independent_evidence(tmp_path):
     assert audit(tmp_path,'ECCV',2024,c.publisher,c.corpus,c.program,evidence_complete=c.evidence_complete,issues=c.issues)['status']=='VERIFIED'
 
 
+def test_missing_abstract_preserves_other_chapters_and_blocks_gate(tmp_path):
+    pages,links=sources()
+    from bs4 import BeautifulSoup
+    soup=BeautifulSoup(pages[links[0]],'html.parser')
+    soup.select_one('#Abs1-content').clear()
+    pages[links[0]]=str(soup)
+    c=Collection(Site(tmp_path,'ECCV',2024,pages));eccv(c.cache,c)
+    assert len(c.publisher)==3 and len(c.corpus)==2
+    result=audit(tmp_path,'ECCV',2024,c.publisher,c.corpus,c.program,evidence_complete=c.evidence_complete,issues=c.issues)
+    assert result['status']=='REVIEW_REQUIRED' and result['abstract_missing_count']==1
+    assert result['abstract_present_count']==2
+    assert not (tmp_path/'raw/Formal_Proceedings_Corpus.csv').exists()
+
+
 @pytest.mark.parametrize('stop',[401,403,429,'deferred','auth','challenge'])
 def test_access_stop_preserves_cached_chapters_without_further_network(tmp_path,stop):
     pages,links=sources();cache=Site(tmp_path,'ECCV',2024,pages)

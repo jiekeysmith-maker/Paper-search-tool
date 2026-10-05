@@ -26,4 +26,4 @@ Read current Git HEAD/status/diff before resuming; do not reset WIP.
 
 ## Native continuation
 
-Codex heartbeat automation ID `eccv-tpami` is ACTIVE every 330 minutes, attached to this thread. It was actually created with the app tool. First run is measured from creation (absolute DTSTART was rejected by the native immediate-create API). Stop this automation only after both ECCV and TPAMI meet the user's development completion criteria. Do not touch the unrelated paused legacy automation.
+Codex heartbeat automation ID `eccv-tpami` is ACTIVE every 330 minutes, attached to this thread. It was actually created with the app tool. The native update API subsequently accepted the anchored schedule: first run 2026-10-06 10:46:03 Asia/Shanghai (T0 + 5h30m), then every 330 minutes. Stop this automation only after both ECCV and TPAMI meet the user's development completion criteria. Do not touch the unrelated paused legacy automation.

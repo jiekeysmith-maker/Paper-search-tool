@@ -33,6 +33,15 @@ def title_tokens(text):
 def title_key(text):return ''.join(title_tokens(text))
 
 
+def variant_safe(left,right):
+    """Do not fuzzy-collapse different numbered/mathematical variants."""
+    def signature(title):
+        tokens=title_tokens(title)
+        return (Counter(re.findall(r'\d+',fold(title))),
+                Counter(t for t in tokens if t in {'plus','epsilon','alpha','beta','gamma','delta','lambda'}))
+    return signature(left)==signature(right)
+
+
 @lru_cache(maxsize=16384)
 def people(text):
     if not isinstance(text,str) or not text.strip() or text.casefold().strip() in ('none','unknown','n/a'):return ()
@@ -136,7 +145,8 @@ def reconcile_eccv(publisher,program):
             explicit=(other.get('Publication_Link_Type')=='ECVA_EXPLICIT_DOI'
                       and other.get('Publication_Link_Evidence')==other.get('Official_URL')
                       and other.get('Publication_Link')==row.get('Official_URL') and stable)
-            eligible=(stable and author in strong) or (explicit and author=='AUTHOR_HIGH_OVERLAP') or (author in strong and (exact or score>=0.92)) or (full_team and overlap>=0.6)
+            safe_variant=variant_safe(row['Title'],other['Title'])
+            eligible=(stable and author in strong) or (explicit and author=='AUTHOR_HIGH_OVERLAP') or (author in strong and (exact or (safe_variant and score>=0.92))) or (safe_variant and full_team and overlap>=0.6)
             strength=1.1 if stable else 1.0 if exact else max(score,overlap)
             # Keep weak alternatives as competition/evidence; never greedy match.
             if exact or stable or score>=0.65 or author in strong or author=='AUTHOR_HIGH_OVERLAP':
@@ -170,4 +180,6 @@ def reconcile_eccv(publisher,program):
             Reason='Unique bidirectional multi-evidence match with competition margin' if resolved else 'No unambiguous sufficient identity proof; candidates are not confirmed matches'))
     for j,row in enumerate(records):
         if j not in matched:results.append(dict(Status='ECVA_ONLY_UNRESOLVED',Resolved=False,Title=row['Title'],Independent_URL=row.get('Official_URL',''),Reason='No confirmed publisher counterpart; not a missing-paper count'))
-    return results,len(records)
+    independent_unique=len({('url',r['Official_URL']) if r.get('Official_URL') else ('unidentified',i)
+                            for i,r in enumerate(records)})
+    return results,independent_unique

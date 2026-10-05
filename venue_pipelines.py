@@ -472,7 +472,7 @@ def eccv(cache, collection):
     for row in collection.program:
         if row.get('Official_URL') not in pending or 'www.ecva.net/papers/' not in row.get('Official_URL',''):continue
         try:
-            proof=publication_link(access.get(row['Official_URL']),row['Official_URL'],year,row['Title'])
+            proof=publication_link(access.get(row['Official_URL']),row['Official_URL'],year,row['Title'],row.get('Authors',''))
             row.update(proof)
             link_evidence.append(dict(Independent_URL=row['Official_URL'],**proof))
         except Exception as exc:
