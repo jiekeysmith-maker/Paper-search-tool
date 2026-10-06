@@ -125,12 +125,12 @@ class FetchCache:
         self.validate_url(url)
         return all(p.is_file() for p in self.paths(url))
 
-    def get(self, url, *, cache_only=False):
+    def get(self, url, *, cache_only=False, evidence=False):
         self.validate_url(url)
         body, meta = self.paths(url)
         is_detail = ('/article/view/' in url or '/chapter/' in url or '/hash/' in url
                      or (self.venue == 'ICML' and urlparse(url).path.endswith('.html')))
-        refresh = not cache_only and self.refresh_evidence and not is_detail and url not in self.refreshed
+        refresh = not cache_only and self.refresh_evidence and (evidence or not is_detail) and url not in self.refreshed
         if body.exists() and meta.exists():
             m = json.loads(meta.read_text(encoding='utf-8'))
             data = body.read_bytes()

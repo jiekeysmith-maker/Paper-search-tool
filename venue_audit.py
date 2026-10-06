@@ -1,23 +1,24 @@
 """Conservative independent reconciliation; differences never imply missing counts."""
 from collections import Counter
 from hashlib import sha256
+from html import unescape
 import re
 import unicodedata
 
 from screen_verified import MAPPING
+from submission_identity import identity_keys, group_events, compatible_authors, identity_conflict
 from venue_runtime import write_csv, write_json, utc
 
 REQUIRED = set(MAPPING) | {'Formal_Publication_Evidence'}
 
 
 def normalize(value):
-    value = unicodedata.normalize('NFKC', str(value)).casefold()
+    value = unicodedata.normalize('NFKC', unescape(str(value))).casefold()
     return re.sub(r'\s+', ' ', value.translate(str.maketrans({'–': '-', '—': '-', '’': "'", '“': '"', '”': '"'}))).strip()
 
 
 def identities(row):
-    return {str(row[k]).strip().replace('http://', 'https://').rstrip('/')
-            for k in ('Official_URL', 'OpenReview_URL', 'DOI') if row.get(k)}
+    return identity_keys(row)
 
 
 def authors(value):
@@ -44,39 +45,35 @@ def validate_rows(rows, venue, year):
 
 
 def reconcile(publisher, program):
-    results, unique = [], []
-    by_identity = {}
-    for row in program:
-        ids = identities(row)
-        previous = {by_identity[x] for x in ids if x in by_identity}
-        if previous:
-            old = unique[next(iter(previous))]
-            if ('Program_Event_ID' in old and 'Program_Event_ID' in row and len(previous) == 1
-                    and normalize(old['Title']) == normalize(row['Title'])
-                    and authors(old.get('Authors', '')) == authors(row.get('Authors', ''))):
-                results.append(dict(Status='DUPLICATE_EVENT', Resolved=True, Title=row['Title'], Reason='Same stable paper identity, title and authors'))
-                continue
-            results.append(dict(Status='DUPLICATE_IDENTITY', Resolved=False, Title=row['Title'], Reason='Conflicting program identities'))
-        for identity in ids:
-            by_identity[identity] = len(unique)
-        unique.append(row)
+    unique, results = group_events(program)
     used = set()
     identity_index, title_index = {}, {}
     for i, other in enumerate(unique):
         for identity in identities(other):
             identity_index.setdefault(identity, set()).add(i)
-        title_index.setdefault(normalize(other['Title']), []).append(i)
+        observed_titles = {normalize(r['Title']) for r in other.get('_Events', [other])}
+        for title in observed_titles:
+            title_index.setdefault(title, []).append(i)
     title_counts = Counter(normalize(r['Title']) for r in publisher)
+    publisher_keys = Counter(k for r in publisher for k in identities(r))
     for row in publisher:
         exact_ids = sorted({i for key in identities(row) for i in identity_index.get(key, ())})
         candidates = exact_ids or title_index.get(normalize(row['Title']), [])
         status, resolved, reason = 'INDEX_ONLY', False, 'No independent counterpart'
         other = {}
-        if len(candidates) > 1 or (not exact_ids and title_counts[normalize(row['Title'])] > 1):
+        if any(publisher_keys[k] > 1 for k in identities(row)):
+            status, reason = 'DUPLICATE_IDENTITY', 'Multiple publisher records share a stable identity'
+        elif len(candidates) > 1 or (not exact_ids and title_counts[normalize(row['Title'])] > 1):
             status, reason = 'DUPLICATE_IDENTITY', 'Ambiguous match; cannot collapse by title'
         elif len(candidates) == 1:
             i = candidates[0]
             other = unique[i]
+            if not exact_ids:
+                observed = [r for r in other.get('_Events', [other])
+                            if normalize(r['Title']) == normalize(row['Title'])
+                            and compatible_authors(row.get('Authors'), r.get('Authors'))]
+                if observed:
+                    other = {**other, 'Title': observed[0]['Title'], 'Authors': observed[0]['Authors']}
             if i in used:
                 status, reason = 'DUPLICATE_IDENTITY', 'Independent record matched more than once'
             else:
@@ -87,19 +84,31 @@ def reconcile(publisher, program):
                     status = 'NORMALIZED_MATCH'
                 else:
                     status = 'TITLE_VARIANT'
+                if exact_ids and any(normalize(event['Title']) != normalize(row['Title'])
+                                     for event in other.get('_Events', [])):
+                    status = 'TITLE_VARIANT'
                 resolved = True
                 reason = 'Stable identity' if exact_ids else 'Unique title in both enumerations'
+                if exact_ids and not compatible_authors(row.get('Authors', ''), other.get('Authors', '')):
+                    reason += '; author representation/coverage differs; original observations retained'
                 # Title-only matches require corroborating complete author metadata.
-                if not exact_ids and (not other.get('Authors') or authors(row.get('Authors', '')) != authors(other['Authors'])):
+                conflict = identity_conflict(row, other)
+                if conflict or other.get('_Identity_Conflict'):
+                    status, resolved, reason = 'OTHER_UNRESOLVED', False, conflict or other['_Identity_Conflict']
+                elif not exact_ids and not compatible_authors(row.get('Authors', ''), other.get('Authors', '')):
                     status, resolved, reason = 'OTHER_UNRESOLVED', False, 'Title-only match without matching authors'
         results.append(dict(Status=status, Resolved=resolved, Paper_ID=row.get('Paper_ID', ''),
                             Title=row['Title'], Independent_Title=other.get('Title', ''),
+                            Publisher_Authors=row.get('Authors', ''),
                             Official_URL=row.get('Official_URL', ''),
-                            Independent_URL=other.get('Official_URL', ''), Reason=reason))
+                            Independent_URL=other.get('Official_URL', ''), Reason=reason,
+                            Program_Events=other.get('_Events', [])))
     for i, row in enumerate(unique):
         if i not in used:
             results.append(dict(Status='PROGRAM_ONLY', Resolved=False, Title=row['Title'],
-                                Independent_URL=row.get('Official_URL', ''), Reason='No unique publisher counterpart'))
+                                Independent_URL=row.get('Official_URL', ''),
+                                OpenReview_URL=row.get('OpenReview_URL', ''), Program_Events=row.get('_Events', []),
+                                Reason='No unique publisher counterpart'))
     return results, len(unique)
 
 

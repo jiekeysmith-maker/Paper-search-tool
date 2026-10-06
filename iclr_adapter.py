@@ -38,4 +38,14 @@ class ICLRAdapter:
         if not titles or not author or not abstract or not abstract.get_text(' ',strip=True):raise ValueError('Incomplete detail metadata')
         metadata={m.get('name'):m.get('content') for m in s.select('meta[name^="citation_"]') if m.get('name')!='citation_author'}
         metadata['citation_author']=meta('citation_author')
-        return dict(Paper_ID=f'ICLR{year}_{native}',Title=titles[0],Authors=author.get_text(' ',strip=True),Abstract=abstract.get_text(' ',strip=True),Venue='ICLR',Year=year,Track='Main Conference',Official_URL=url,PDF_URL=(meta('citation_pdf_url') or [''])[0],DOI=(meta('citation_doi') or [''])[0],Native_Publisher_ID=native,BibTeX_or_Publisher_Metadata=json.dumps(metadata,ensure_ascii=False),Formal_Publication_Evidence=f'ICLR official electronic proceedings {year}; Conference; {url}',Metadata_Source=url,Published_Date=(meta('citation_publication_date') or [''])[0],Issue_Date='',Source_Snapshot_UTC=stamp,Access_Status='PUBLIC_METADATA',Abstract_Source_URL=url,Formal_Proof_URL=url)
+        # The display template can collapse repeated given/family names. Citation
+        # metadata preserves author boundaries and both parts ("Yang, Yang").
+        citation_authors=meta('citation_author')
+        if citation_authors and any(not a.strip() for a in citation_authors):
+            raise ValueError('Empty citation author')
+        names=[]
+        for name in citation_authors:
+            parts=name.split(',')
+            names.append(' '.join(p.strip() for p in reversed(parts)) if len(parts)==2 else name.strip())
+        author_text='; '.join(names) if names else author.get_text(' ',strip=True)
+        return dict(Paper_ID=f'ICLR{year}_{native}',Title=titles[0],Authors=author_text,Authors_As_Displayed=author.get_text(' ',strip=True),Abstract=abstract.get_text(' ',strip=True),Venue='ICLR',Year=year,Track='Main Conference',Official_URL=url,PDF_URL=(meta('citation_pdf_url') or [''])[0],DOI=(meta('citation_doi') or [''])[0],Native_Publisher_ID=native,BibTeX_or_Publisher_Metadata=json.dumps(metadata,ensure_ascii=False),Formal_Publication_Evidence=f'ICLR official electronic proceedings {year}; Conference; {url}',Metadata_Source=url,Published_Date=(meta('citation_publication_date') or [''])[0],Issue_Date='',Source_Snapshot_UTC=stamp,Access_Status='PUBLIC_METADATA',Abstract_Source_URL=url,Formal_Proof_URL=url)

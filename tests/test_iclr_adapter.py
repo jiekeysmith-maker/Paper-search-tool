@@ -51,3 +51,14 @@ def test_program_scope_and_pagination():
     accepted,excluded=independent_program(dict(count=3,results=rows),'ICLR',2024)
     assert len(accepted)==1 and len(excluded)==2
     with pytest.raises(ValueError):independent_program(dict(count=4,results=rows),'ICLR',2024)
+
+
+def test_structured_citation_author_preserves_repeated_name():
+    soup=BeautifulSoup(snapshot(DETAIL),'html.parser')
+    for tag in soup.select('meta[name="citation_author"]'):tag.decompose()
+    tag=soup.new_tag('meta',attrs={'name':'citation_author','content':'Example, Example'})
+    soup.head.append(tag)
+    soup.select_one('.paper-authors').string='Example'
+    result=ICLRAdapter().detail(str(soup),DETAIL,2024,'fixture')
+    assert result['Authors']=='Example Example'
+    assert result['Authors_As_Displayed']=='Example'

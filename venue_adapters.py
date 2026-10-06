@@ -4,16 +4,59 @@ from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 
 class PMLRAdapter:
-    def index(self, html, url, year):
+    def publication_url(self, value, base):
+        p=urlparse(urljoin(base,value))
+        volume=urlparse(base).path.split('/')[1]
+        if (p.scheme not in ('http','https') or p.hostname!='proceedings.mlr.press'
+                or p.username or p.port not in (None,80,443)
+                or not re.fullmatch('/'+re.escape(volume)+r'/[^/]+\.html',p.path)
+                or p.path.endswith('/index.html')):
+            raise ValueError('Invalid PMLR publication URL: '+value)
+        return 'https://proceedings.mlr.press'+p.path
+
+    def index_pages(self, html, url):
+        s=BeautifulSoup(html,'html.parser')
+        pages=[]
+        for a in s.select('a[rel="next"], .pagination a[href]'):
+            link=urljoin(url,a['href'])
+            if link == url and 'next' in a.get('rel', []):
+                raise ValueError('PMLR pagination self-loop')
+            p=urlparse(link)
+            if (p.scheme!='https' or p.hostname!='proceedings.mlr.press'
+                    or not p.path.startswith('/'+urlparse(url).path.split('/')[1]+'/')):
+                raise ValueError('Out-of-volume PMLR pagination: '+link)
+            if link != url and link not in pages: pages.append(link)
+        if s.select('.pagination') and not pages:
+            raise ValueError('Unenumerable PMLR pagination')
+        return pages
+
+    def index(self, html, url, year, *, allow_pagination=False):
         s=BeautifulSoup(html,'html.parser')
         heading=s.get_text(' ',strip=True)[:1800]
         if 'International Conference on Machine Learning' not in heading or str(year) not in heading:
             raise ValueError('Wrong PMLR conference/year')
+        if self.index_pages(html,url) and not allow_pagination:
+            raise ValueError('Pagination requires explicit enumeration')
         rows=[]
-        for p in s.select('div.paper'):
-            a=next((a for a in p.select('a[href]') if a.get_text(strip=True)=='abs'),None)
+        units=s.select('.paper')
+        covered=set()
+        for p in units:
+            links=[a for a in p.select('a[href]') if a.get_text(strip=True).casefold() in ('abs','abstract')]
+            a=links[0] if len(links)==1 else None
             if not a: raise ValueError('Missing detail link')
-            rows.append(dict(Title=p.select_one('.title').get_text(' ',strip=True),Official_URL=urljoin(url,a['href']),Authors=p.select_one('.authors').get_text(' ',strip=True),OpenReview_URL=next((a['href'] for a in p.select('a[href]') if 'openreview.net/forum?' in a['href']),'')))
+            detail=self.publication_url(a['href'],url)
+            title=p.select_one('.title'); authors=p.select_one('.authors')
+            if not title or not authors or not title.get_text(strip=True) or not authors.get_text(strip=True):
+                raise ValueError('Missing PMLR index metadata: '+detail)
+            covered.update(id(x) for x in p.select('a[href]'))
+            rows.append(dict(Title=title.get_text(' ',strip=True),Official_URL=detail,Authors=authors.get_text(' ',strip=True),OpenReview_URL=next((a['href'] for a in p.select('a[href]') if 'openreview.net/forum?' in a['href']),'')))
+        for a in s.select('a[href]'):
+            if a.find_parent(class_='pagination') or set(a.get('rel',[])) & {'next','prev'}:
+                continue
+            path=urlparse(urljoin(url,a['href'])).path
+            is_detail=bool(re.fullmatch('/'+re.escape(urlparse(url).path.split('/')[1])+r'/[^/]+\.html',path)) and not path.endswith('/index.html')
+            if id(a) not in covered and (a.get_text(strip=True).casefold() in ('abs','abstract') or is_detail):
+                raise ValueError('Unparsed PMLR index entry: '+a['href'])
         if not rows: raise ValueError('Empty/missing PMLR index')
         if len({r['Official_URL'] for r in rows})!=len(rows): raise ValueError('Duplicate index URL')
         return rows

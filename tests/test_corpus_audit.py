@@ -423,6 +423,33 @@ def test_cvf_direct_rejects_wrong_year_booktitle_or_host(tmp_path, url, html):
     assert record["Resolution"] == "CVF_DIRECT_REJECTED"
 
 
+def test_cvf_candidate_404_is_not_permanent_and_future_evidence_is_verified(tmp_path, monkeypatch):
+    import logging
+    import requests
+    from src.crawler import CachedHttpClient
+    client = CachedHttpClient({'request_interval_seconds': 0, 'retries': 0}, logging.getLogger('offline'))
+    url = 'https://openaccess.thecvf.com/content/CVPR2026/html/Synthetic.html'
+    paths = ProjectPaths(tmp_path, 'CVPR', 2026)
+    attempts = []
+    def get(*args, **kwargs):
+        attempts.append(args[0])
+        response = requests.Response()
+        response.status_code = 404 if len(attempts) == 1 else 200
+        response._content = _cvf_direct_html('Synthetic official study', year=2026).encode()
+        response.url = url
+        return response
+    monkeypatch.setattr(client.session, 'get', get)
+    record = _direct_record('Synthetic official study')
+    resolution = _direct_resolution('Synthetic official study', url)
+    def verify():
+        return _attempt_cvf_direct_verification(client, paths, record, resolution, 'CVPR', 2026, False,
+            accepted_author_counts={normalize_authors(record['Authors']): 1})
+    assert verify() is None
+    assert record['Formal_Publication_Status'] == 'UNRESOLVED'
+    assert verify() is not None
+    assert len(attempts) == 2
+
+
 def test_audit_adds_verified_cvf_direct_without_rewriting_raw(monkeypatch, tmp_path):
     paths = ProjectPaths(tmp_path, "CVPR", 2025)
     write_csv([_raw_row("P1", "Existing Formal")], paths.raw_csv, RAW_COLUMNS)

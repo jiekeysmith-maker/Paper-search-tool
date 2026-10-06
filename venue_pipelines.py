@@ -12,6 +12,7 @@ from iclr_adapter import ICLRAdapter
 from ojs_adapter import AAAIOJSAdapter
 from springer_adapter import SpringerECCVAdapter
 from venue_runtime import write_csv, write_json, utc
+from submission_identity import forum_id, event_placeholder
 
 VOLUMES = {2024: 235, 2025: 267, 2026: 306}
 
@@ -65,11 +66,17 @@ def conference_program(cache, venue, year):
         links = [row.get('paper_url'), *(m.get('uri') for m in row.get('eventmedia', []))]
         links = [x for x in links if isinstance(x, str)]
         formal = next((x for x in links if x.startswith(('https://proceedings.mlr.press/', 'https://proceedings.iclr.cc/'))), '')
-        review = next((x for x in links if x.startswith('https://openreview.net/forum?')), '')
+        reviews = sorted({f'https://openreview.net/forum?id={forum_id(x)}' for x in links if forum_id(x)})
+        if len(reviews) > 1:
+            raise ValueError(f'Conflicting OpenReview identities on program event {row["id"]}')
+        review = reviews[0] if reviews else ''
         result.append(dict(Title=row['name'], Authors='; '.join(a['fullname'] for a in row['authors']),
                            Official_URL=formal, OpenReview_URL=review,
                            Evidence_URL=urljoin(f'https://{venue.lower()}.cc', virtual),
-                           Program_Event_ID=row['id'], Source_Group=row['sourceurl']))
+                           Program_Event_ID=row['id'], Source_Group=row['sourceurl'],
+                           Program_Event_Type=row.get('event_type', row.get('eventtype', '')),
+                           Related_Event_IDs=json.dumps(row.get('related_events_ids') or []),
+                           Event_OpenReview_Placeholders=json.dumps([x for x in links if event_placeholder(x)])))
     return result, [dict(Title=r.get('name', ''), Reason='Outside accepted target conference groups',
                          Source_Group=r.get('sourceurl', '')) for r in excluded]
 
@@ -82,21 +89,75 @@ def icml(cache, collection):
     program = f'https://icml.cc/static/virtual/data/icml-{year}-orals-posters.json'
     cache.import_registry(cache.base / 'raw' / 'Source_Registry.json', {url, metadata, program})
     adapter = PMLRAdapter()
-    collection.publisher = adapter.index(cache.get(url), url, year)
+    pending, visited, publisher_seen = [url], set(), set()
+    while pending:
+        page = pending.pop(0)
+        if page in visited:
+            continue
+        if len(visited) >= 100:
+            raise ValueError('PMLR pagination limit; enumeration incomplete')
+        visited.add(page)
+        html = cache.get(page, evidence=True)
+        try:
+            entries = adapter.index(html, page, year, allow_pagination=True)
+            pages = adapter.index_pages(html, page)
+            for link in BeautifulSoup(html, 'html.parser').select('a[rel="next"][href]'):
+                if urljoin(page, link['href']) in visited:
+                    raise ValueError('PMLR next-page cycle; enumeration incomplete')
+        except ValueError as exc:
+            collection.issue(str(exc), 'METADATA_INCOMPLETE', Official_URL=page)
+            collection.save()
+            raise
+        for entry in entries:
+            if entry['Official_URL'] in publisher_seen:
+                collection.issue('Repeated publisher URL across index units', 'DUPLICATE_IDENTITY', Official_URL=entry['Official_URL'])
+            else:
+                collection.publisher.append(entry)
+                publisher_seen.add(entry['Official_URL'])
+        pending.extend(p for p in pages if p not in visited and p not in pending)
     collection.save()
     collection.program, collection.excluded = conference_program(cache, 'ICML', year)
     rows = yaml.safe_load(cache.get(metadata))
     if not isinstance(rows, list):
         raise ValueError('PMLR citeproc must be a list')
     by_url = {}
-    for row in rows:
-        normalized = adapter.normalize(row, year, volume, metadata, utc())
+    ambiguous = set()
+    for number, row in enumerate(rows, 1):
+        try:
+            row = {**row, 'URL': adapter.publication_url(row['URL'], url)}
+            normalized = adapter.normalize(row, year, volume, metadata, utc())
+            normalized['Official_URL'] = adapter.publication_url(normalized['Official_URL'], url)
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            collection.issue(f'Citeproc entry {number}: {exc}', 'METADATA_INCOMPLETE', Official_URL=metadata)
+            continue
         if normalized['Official_URL'] in by_url:
             collection.issue('Duplicate citeproc identity', 'DUPLICATE_IDENTITY', Official_URL=normalized['Official_URL'])
-        by_url[normalized['Official_URL']] = normalized
+            ambiguous.add(normalized['Official_URL'])
+        else:
+            by_url[normalized['Official_URL']] = normalized
+    for duplicate in ambiguous:
+        by_url.pop(duplicate)
     publisher_urls = {r['Official_URL'] for r in collection.publisher}
-    for url in by_url.keys() - publisher_urls:
-        collection.issue('Citeproc record absent from publisher index', 'OTHER_UNRESOLVED', Official_URL=url)
+    # A bulk publisher record is discovery evidence. Verify its official detail
+    # before adding a listing omission; a program acceptance never suffices.
+    for detail_url in sorted(by_url.keys() - publisher_urls):
+        candidate = by_url[detail_url]
+        try:
+            detail_html = cache.get(detail_url)
+            verified = adapter.detail(detail_html, detail_url, year, volume)
+            from submission_identity import compatible_authors
+            from venue_audit import normalize
+            if (normalize(verified['title']) != normalize(candidate['Title'])
+                    or not compatible_authors('; '.join(verified['authors']), candidate['Authors'])):
+                raise ValueError('Citeproc/detail identity conflict')
+            soup = BeautifulSoup(detail_html, 'html.parser')
+            review = next((a['href'] for a in soup.select('a[href]') if 'openreview.net/forum?' in a['href']), '')
+            candidate['OpenReview_URL'] = review
+            collection.publisher.append(dict(Title=verified['title'], Authors='; '.join(verified['authors']),
+                Official_URL=detail_url, OpenReview_URL=review, Enumeration_Source=metadata,
+                Enumeration_Evidence='Citeproc-only record verified against official detail'))
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            collection.issue(str(exc), 'METADATA_INCOMPLETE', Official_URL=detail_url)
     missing = []
     for row in collection.publisher:
         normalized = by_url.get(row['Official_URL'])
@@ -115,7 +176,7 @@ def icml(cache, collection):
                     PDF_URL=pdf['content'] if pdf else '', OpenReview_URL=row.get('OpenReview_URL', ''),
                     Formal_Publication_Evidence=d['bibtex'], Metadata_Source=row['Official_URL'])
     collection.details(detail, missing)
-    collection.evidence_complete = True
+    collection.evidence_complete = not collection.issues
 
 
 def iclr(cache, collection):
@@ -129,8 +190,14 @@ def iclr(cache, collection):
     def detail(html, row):
         result = adapter.detail(html, row['Official_URL'], year, utc())
         soup = BeautifulSoup(html, 'html.parser')
-        result['OpenReview_URL'] = next((a['href'] for a in soup.select('a[href]') if a['href'].startswith('https://openreview.net/forum?')), '')
+        forums = {forum_id(a['href']) for a in soup.select('a[href]') if forum_id(a['href'])}
+        if len(forums) > 1:
+            raise ValueError('Conflicting OpenReview identities on ICLR publisher detail')
+        result['OpenReview_URL'] = 'https://openreview.net/forum?id=' + next(iter(forums)) if forums else ''
         row['OpenReview_URL'] = result['OpenReview_URL']
+        row['Index_Authors_As_Displayed'] = row['Authors']
+        row['Authors'] = result['Authors']
+        row['Author_Evidence_URL'] = row['Official_URL']
         return result
     collection.details(detail)
     collection.evidence_complete = True
