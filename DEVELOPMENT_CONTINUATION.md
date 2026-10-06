@@ -33,3 +33,16 @@ Latest targeted group: 49 passed (identity and recovery), including missing abst
 ## Native continuation
 
 Codex heartbeat automation ID `eccv-tpami` is ACTIVE every 330 minutes, attached to this thread. It was actually created with the app tool. The native update API subsequently accepted the anchored schedule: first run 2026-10-06 10:46:03 Asia/Shanghai (T0 + 5h30m), then every 330 minutes. Stop this automation only after both ECCV and TPAMI meet the user's development completion criteria. Do not touch the unrelated paused legacy automation.
+
+## TPAMI checkpoint after first real scheduled continuation
+
+The automation actually fired at 2026-10-06T02:46:30Z. Git/WIP checks completed. TPAMI adapter/policy patches were present; the previous pipeline patch had failed atomically and was then completed safely.
+
+- Added date normalization with precision preservation, first reported official date, final-issue evidence, placeholder abstract rejection, non-research official-type proof, Early Access event ledger, per-issue pagination/count evidence, partial metadata preservation, per-host access-stop/cache replay. Removed fixed twelve-issue tests from production code.
+- Added static citation-tag fallback alongside existing public xplGlobal JSON parser. Mock/static contracts are not proof of actual site readiness.
+- 103 targeted offline regressions passed (TPAMI, acceptance cache, AAAI, ICML/ICLR pipeline and formal screening). V1.2 SHA256 unchanged; diff check clean.
+- Attempt `tpami_final_issue_20261006` replayed real HTTP snapshots: REVIEW_REQUIRED, metadata 0, unresolved 3. IMPORTANT: this still used the prototype's WRONG CSDL annual URL, not evidence of absent publications.
+- Browser investigation subsequently found the real CSDL route through official navigation: `/csdl/journal/tp/past-issues/2020/2024`. `/csdl/journal/tp/2024` renders 404. The real archive rendered twelve issue links (observed, not assumed). January `/csdl/journal/tp/2024/01` renders Volume 46 Issue 1, 42 articles, `Showing 42 out of 42`, `.article-title` and `.article-authors`; article URLs carry IEEE numeric document ID plus CSDL ID.
+- IEEE also renders normally in the in-app browser. Home has an All Issues link; `/xpl/issues?punumber=34&isnumber=11674301` exposes year controls and actual issue links. Raw HTTP only provides SPA shells, and one raw document request returned 202.
+- Thus NOT_READY, but NOT irrecoverably source-blocked. Next: inspect IEEE 2024 issue navigation and public citation export; adapt real rendered DOM or official export ingestion (no private REST, no bypass). Correct CSDL source discovery. Preserve snapshots/evidence from normal public UI. Do not declare the mocked prototype production-ready.
+- Current browser handles at this writing: CSDL tab 1 in browser 2, IEEE tab 2. Re-discover if stale. Native automation remains ACTIVE because TPAMI is unfinished.

@@ -2,9 +2,23 @@
 import csv
 from pathlib import Path
 import re
+from datetime import datetime
 
 YEAR_BASIS = 'TPAMI_FINAL_ISSUE_YEAR_V1'
 TITLE = 'IEEE Transactions on Pattern Analysis and Machine Intelligence'
+
+
+def normalize_date(value):
+    """Preserve available precision; do not invent a day for month-only dates."""
+    value=str(value or '').strip()
+    for pattern in ('%Y-%m-%d','%Y/%m/%d','%d %B %Y','%d %b %Y','%B %d, %Y','%b %d, %Y'):
+        try:return datetime.strptime(value,pattern).strftime('%Y-%m-%d')
+        except ValueError:pass
+    for pattern in ('%Y-%m','%Y/%m','%B %Y','%b %Y'):
+        try:return datetime.strptime(value,pattern).strftime('%Y-%m')
+        except ValueError:pass
+    if re.fullmatch(r'\d{4}',value):return value
+    return ''
 
 
 def doi_key(value):
@@ -43,8 +57,14 @@ def corpus_issues(base, rows):
             reason = f'Duplicate DOI within/across final years: {doi}; other={other_dois.get(doi)}'
         elif (r.get('Year_Basis') != YEAR_BASIS or str(r.get('Final_Issue_Year')) != str(r.get('Year'))
               or not str(r.get('Volume', '')).isdigit() or not str(r.get('Issue', '')).isdigit()
-              or not 1 <= int(r['Issue']) <= 12 or not str(r.get('Issue_Publication_Date', '')).startswith(str(r.get('Year')))):
+              or int(r['Volume'])<1 or int(r['Issue'])<1
+              or not normalize_date(r.get('Issue_Publication_Date','')).startswith(str(r.get('Year')))):
             reason = 'Final issue year/volume/issue/date contract failed'
+        elif r.get('Official_URL')!='https://ieeexplore.ieee.org/document/'+str(r.get('Native_Publisher_ID','')) or not str(r.get('Native_Publisher_ID','')).isdigit():
+            reason='IEEE document identity/URL mismatch'
+        else:
+            from eccv_metadata import abstract_issue
+            reason=abstract_issue(r.get('Title',''),r.get('Abstract','')) or None
         if reason:
             issues.append(dict(Status='DUPLICATE_IDENTITY' if 'Duplicate' in reason else 'OTHER_UNRESOLVED',
                                DOI=doi, Reason=reason))

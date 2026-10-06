@@ -72,7 +72,9 @@ def seed(cache):
         sources.append(SEED_ROOT / venue / 'source_investigation/runtime/cache')
         sources += [p for p in (SEED_ROOT / 'attempts').glob(f'*/{venue}/{year}/runtime/cache') if p != cache.directory]
     if venue == 'TPAMI':
-        sources += [ROOT / venue / str(y) / 'runtime/cache' for y in (2024, 2025, 2026) if y != year]
+        sources += [SEED_ROOT / venue / str(y) / 'runtime/cache' for y in (2024, 2025, 2026) if y != year]
+        sources += list((SEED_ROOT / venue).glob('public_probe_*/runtime/cache'))
+        sources += [p for p in (SEED_ROOT / 'attempts').glob(f'*/{venue}/{year}/runtime/cache') if p != cache.directory]
     entries = []
     for source in sources:
         for path in source.glob('*.json'):
@@ -86,7 +88,7 @@ def seed(cache):
             body = path.with_suffix('.body')
             entries.append(dict(url=url, snapshot=str(body), sha256=item['sha256'], bytes=item['bytes'], http_status=item['http_status'], utc=item.get('utc')))
     if venue == 'TPAMI':
-        for path in (ROOT / venue / 'source_investigation').glob('*.json'):
+        for path in (SEED_ROOT / venue / 'source_investigation').glob('*.json'):
             item=json.loads(path.read_text(encoding='utf-8'))
             body=path.with_suffix('.body')
             if item.get('status')==200 and body.is_file() and item.get('final_url')==item['url']:

@@ -15,7 +15,7 @@ def context(year=2024):
 def metadata():
     return dict(publication_title=TITLE, publication_number=34, content_type='Journals',
                 volume='46', issue='5', publication_year=2024, doi='10.1109/TPAMI.2023.3275249',
-                article_number=10122995, authors=['Author One'], title='Title', abstract='Abstract',
+                article_number=10122995, authors=['Author One'], title='Title', abstract='We evaluate a new learning method on public benchmarks.',
                 publication_date='11 May 2023', early_access_date='2023-05-11')
 
 
