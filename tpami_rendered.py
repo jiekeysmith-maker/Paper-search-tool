@@ -134,16 +134,30 @@ class PublicRenderer:
                 raise ValueError('OFFICIAL_ACCESS_RESTRICTION: '+title)
             html=self.page.content()
             capture=dict(kind='PUBLIC_RENDERED_HTML',year=self.year,requested_url=url,
-                final_url=self.page.url,utc=utc(),dom_sha256=sha256(html.encode('utf-8')).hexdigest())
+                final_url=self.page.url,utc=utc(),dom_sha256=sha256(html.encode('utf-8')).hexdigest(),
+                source_role='independent' if p.hostname=='www.computer.org' else 'publisher',
+                page_identity=p.path,issue_identity=parse_qs(p.query).get('isnumber',[''])[0],
+                browser_status='PUBLIC_DOM_CAPTURED')
             # Acquisition evidence, not a fabricated publisher count. The audit
             # still has to validate the selected year and every discovered issue.
             html+='\n<script type="application/json" id="tpami-rendered-capture">'+json.dumps(capture).replace('<','\\u003c')+'</script>'
             result=requests.Response();result.status_code=200;result.url=self.page.url
             result._content=html.encode('utf-8');result.headers['Content-Type']='text/html; charset=utf-8'
-            if history is not None:history.append(dict(kind='PUBLIC_RENDERED_HTML',year=self.year,
-                requested_url=url,final_url=self.page.url,navigation=self.navigation,utc=utc()))
+            if history is not None:history.append(dict(capture,navigation=self.navigation))
             return result
         except Exception as exc:
+            # Preserve a timed-out/partial public DOM for diagnosis only, never
+            # as a successful FetchCache entry or inventory closure witness.
+            partial=None
+            if self.page is not None:
+                try:
+                    if public_url(self.page.url):
+                        payload=self.page.content().encode('utf-8');digest=sha256(payload).hexdigest()
+                        path=self.base/'raw/failed_rendered'/f'{digest}.html'
+                        atomic_bytes(path,payload)
+                        partial=dict(final_url=self.page.url,sha256=digest,snapshot=str(path),
+                                     acquisition_status='FAILED_OR_PARTIAL_NOT_CORPUS')
+                except Exception:pass  # Original acquisition error remains authoritative.
             write_json(self.base/'raw/Rendered_Access_Status.json',dict(url=url,error=repr(exc),
-                blocked=self.blocked,navigation=self.navigation,utc=utc()))
+                blocked=self.blocked,navigation=self.navigation,partial=partial,utc=utc()))
             raise

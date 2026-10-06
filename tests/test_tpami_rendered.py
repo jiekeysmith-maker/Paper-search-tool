@@ -41,6 +41,22 @@ def test_rendered_cache_replay_keeps_navigation_provenance(tmp_path):
     proof=meta['history'][0]
     assert proof['kind']=='PUBLIC_RENDERED_HTML' and proof['year']==2024
     assert proof['navigation'][0]['sha256']
+    assert proof['source_role']=='publisher' and proof['page_identity']=='/document/123'
+    assert proof['dom_sha256'] and proof['browser_status']=='PUBLIC_DOM_CAPTURED'
+
+
+def test_partial_render_timeout_is_evidence_not_success(tmp_path):
+    class Delayed(Page):
+        def wait_for(self,**kwargs):raise TimeoutError('SPA content did not finish')
+    cache=FetchCache(tmp_path,'TPAMI',2024,fetch=renderer(tmp_path,Delayed()),delay=0)
+    url='https://ieeexplore.ieee.org/document/123'
+    with pytest.raises(TimeoutError):cache.get(url)
+    assert not cache.has_snapshot(url)
+    status=json.loads((tmp_path/'raw/Rendered_Access_Status.json').read_text())
+    assert status['partial']['acquisition_status']=='FAILED_OR_PARTIAL_NOT_CORPUS'
+    from pathlib import Path
+    payload=Path(status['partial']['snapshot']).read_bytes()
+    assert sha256(payload).hexdigest()==status['partial']['sha256']
 
 
 @pytest.mark.parametrize('status',[202,401,403,429,500])

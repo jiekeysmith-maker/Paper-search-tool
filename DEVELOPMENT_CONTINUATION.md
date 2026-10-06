@@ -151,3 +151,26 @@ download; Results export required login (IEEE UI). No login/bypass attempted.
 - No push, merge, stable-checkout or formal Paper Library writes. Next exact action:
   resolve the pending explicit browser-technology authorization, then validate the
   standalone runtime against public sources; otherwise continue CUA/offline work.
+
+## Explicit Playwright authorization and live-runtime preparation (after f89c3c3)
+
+- User explicitly authorized isolated project Playwright/Chromium and live public
+  acceptance. The previous pending authorization is RESOLVED; do not ask again.
+- Confirmed clean branch at f89c3c3; 176 targeted regressions re-ran successfully
+  in 14.12s (`resume17`). Automation remains ACTIVE / 305 minutes.
+- Installed Playwright 1.63.0 and dependencies only in
+  `output/tpami_runtime/site-packages`, using pip --target and local pip cache.
+  Shared Anaconda and the stable checkout were not modified.
+- Chromium 153.0.8010.12 / revision 1243 full-browser installer stalled after a
+  timeout. Verified its process ownership before stopping our own installer.
+  Partial downloads retained. Retrying official `install --only-shell chromium`
+  with PLAYWRIGHT_BROWSERS_PATH and TEMP/TMP under `output/tpami_runtime`.
+  At this checkpoint installation is still pending; no live annual run yet.
+- Improved capture provenance (source role, page/issue identity, browser capture
+  state) and retain failed/partial rendered DOM separately with SHA256. A timeout
+  snapshot never becomes a successful cache or inventory witness. 40 parser and
+  renderer tests passed in 9.75s (`resume18`), including the new timeout case.
+- Next exact action: inspect the existing installer process/session before doing
+  anything else; avoid duplicate installs. Once installed, run isolated TPAMI2024
+  acceptance and classify its real audit, followed by cache-only replay. Keep
+  PUBLIC sources fail-closed; the latest annual audit is still REVIEW_REQUIRED.
