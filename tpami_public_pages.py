@@ -1,13 +1,116 @@
 """Public CSDL rendered HTML, never backing REST or guessed issue inventories."""
 import re
-from urllib.parse import urljoin, urlparse
+import json
+from hashlib import sha256
+from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 from bs4 import BeautifulSoup
 from tpami_policy import TITLE, normalize_date
+
+
+def rendered_inventory_evidence(html,rows):
+    """Closure of the public selected-year UI, cross-checked by the pipeline.
+
+    This witnesses the captured directory, not future publication or availability.
+    Missing capture provenance, pending loading or pagination always fails closed.
+    """
+    soup=BeautifulSoup(html,'html.parser');marker=soup.find('script',id='tpami-rendered-capture')
+    if marker is None:return None
+    result=dict(complete=False,basis='PUBLIC_RENDERED_YEAR_DIRECTORY',discovered_issue_count=len(rows))
+    try:
+        proof=json.loads(marker.get_text())
+        original=html.rsplit('\n<script type="application/json" id="tpami-rendered-capture">',1)[0]
+        if (proof.get('kind')!='PUBLIC_RENDERED_HTML' or proof.get('dom_sha256')!=sha256(original.encode()).hexdigest()
+                or not rows or {str(r['Year']) for r in rows}!={str(proof.get('year'))}
+                or {r.get('Directory_Source_URL') for r in rows}!={proof.get('requested_url')}):return result
+        p=urlparse(proof['final_url']);year=str(proof['year'])
+        if p.hostname=='www.computer.org':
+            scope=soup.select_one('#pastIssuesMenu')
+            selected=soup.select('#pastIssuesMenu li.active a[aria-label="Select Year '+year+'"]')
+            if not scope or len(selected)!=1 or p.path!=urlparse(csdl_annual_url(int(year))).path:return result
+            entries=scope.select('.cover-image-link[href]')
+        elif p.hostname=='ieeexplore.ieee.org' and p.path=='/xpl/issues':
+            scope=soup.select_one('main') or soup
+            selected=soup.select('li.active a[data-analytics_identifier="past_issue_selected_year"]')
+            if [x.get_text(strip=True) for x in selected]!=[year]:return result
+            entries=soup.select('.issue-details a[href]')
+        else:return result
+        text=scope.get_text(' ',strip=True)
+        if (len(entries)!=len(rows) or scope.select('.pagination, [rel="next"], [aria-busy="true"]')
+                or re.search(r'Getting results|Loading|Load more',text,re.I)):return result
+        result.update(complete=True,captured_at=proof['utc'],final_url=proof['final_url'],
+                      dom_sha256=proof['dom_sha256'],note='All displayed final issues at capture time; independent inventory must also agree')
+    except (ValueError,KeyError,TypeError):pass
+    return result
 
 
 def csdl_annual_url(year):
     """Observed public archive route; its final segment selects the year."""
     return f'https://www.computer.org/csdl/journal/tp/past-issues/{year // 10 * 10}/{year}'
+
+
+def ieee_directory(html,url,year):
+    if urlparse(url).hostname!='ieeexplore.ieee.org':return None
+    soup=BeautifulSoup(html,'html.parser')
+    links=soup.select('.issue-details a[href]')
+    if not links:return None
+    selected=soup.select('li.active a[data-analytics_identifier="past_issue_selected_year"]')
+    if TITLE not in soup.get_text(' ',strip=True) or [x.get_text(strip=True) for x in selected]!=[str(year)]:
+        raise ValueError('IEEE rendered directory selected year/journal mismatch')
+    volumes={m[1] for el in soup.select('strong') if (m:=re.fullmatch(r'Volume\s+(\d+)',el.get_text(' ',strip=True)))}
+    if len(volumes)!=1:raise ValueError('IEEE rendered annual volume absent/ambiguous')
+    volume=volumes.pop();rows=[];ids=set();numbers=set()
+    for a in links:
+        label=re.fullmatch(r'Issue\s+(\d+)',a.get_text(' ',strip=True))
+        link=urljoin(url,a['href']);p=urlparse(link);query=parse_qs(p.query)
+        native=query.get('isnumber',[])
+        if (not label or p.scheme!='https' or p.hostname!='ieeexplore.ieee.org'
+                or p.path!='/xpl/tocresult.jsp' or query.get('punumber')!=['34']
+                or len(native)!=1 or not native[0].isdigit()):raise ValueError('IEEE invalid issue link')
+        if native[0] in ids or label[1] in numbers:raise ValueError('Duplicate IEEE annual issue identity')
+        ids.add(native[0]);numbers.add(label[1])
+        rows.append(dict(Year=year,Volume=volume,Issue=label[1],Issue_Publication_Date='',
+            Issue_URL=link,Publication_Number='34',Directory_Source_URL=url,
+            Issue_Year_Evidence='Selected official year and volume; date pending issue page'))
+    return rows
+
+
+def ieee_issue_page(html,url,context):
+    p=urlparse(url)
+    if p.hostname!='ieeexplore.ieee.org':return None
+    soup=BeautifulSoup(html,'html.parser');containers=soup.select('.result-item-align')
+    if not containers:return None
+    text=soup.get_text(' ',strip=True)
+    label=re.search(r'Issue\s+(\d+)\s*•\s*([A-Za-z]+)\.?-(\d{4})',text)
+    if (TITLE not in text or not label or label[1]!=str(context['Issue'])
+            or label[3]!=str(context['Year']) or not context.get('Volume')
+            or parse_qs(p.query).get('isnumber')!=parse_qs(urlparse(context['Issue_URL']).query).get('isnumber')):
+        raise ValueError('IEEE rendered issue context mismatch')
+    date=normalize_date(label[2]+' '+label[3])
+    if not date or (context.get('Issue_Publication_Date') and context['Issue_Publication_Date']!=date):
+        raise ValueError('IEEE issue publication date mismatch')
+    context={**context,'Issue_Publication_Date':date};rows=[];seen=set()
+    for container in containers:
+        a=container.select_one('h2 a[href]')
+        if a is None:raise ValueError('IEEE result lacks article heading')
+        link=urljoin(url,a['href']);identity=re.fullmatch(r'https://ieeexplore\.ieee\.org/document/(\d+)/?',link)
+        if not identity or identity[1] in seen:raise ValueError('Invalid/duplicate IEEE result identity')
+        seen.add(identity[1])
+        authors=[n.get_text(' ',strip=True) for n in container.select('xpl-authors-name-list a[href^="/author/"]')]
+        title=a.get_text(' ',strip=True)
+        if not title or not authors:raise ValueError('IEEE result title/authors missing')
+        rows.append(dict(Title=title,Authors='; '.join(authors),Native_Publisher_ID=identity[1],
+            Official_URL=f'https://ieeexplore.ieee.org/document/{identity[1]}',**context))
+    count=re.search(r'Showing\s+(\d+)\s*-\s*(\d+)\s+of\s+(\d+)',text)
+    if not count or int(count[2])-int(count[1])+1!=len(rows) or int(count[2])>int(count[3]):
+        raise ValueError('IEEE rendered page range/count inconsistent')
+    pages=[]
+    next_button=soup.find('button',attrs={'aria-label':'Next page of search results'})
+    if int(count[2])<int(count[3]) and next_button and not next_button.has_attr('disabled'):
+        query=parse_qs(p.query);page=int(query.get('pageNumber',['1'])[0])
+        query.update(pageNumber=[str(page+1)],sortType=['vol-only-seq'])
+        # Public URL observed after clicking Next in the normal issue UI.
+        pages.append(urlunparse(p._replace(query=urlencode(query,doseq=True))))
+    return dict(rows=rows,declared_count=int(count[3]),pages=pages,context=context)
 
 
 def csdl_directory(html, url, year):

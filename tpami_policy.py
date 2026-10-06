@@ -11,6 +11,9 @@ TITLE = 'IEEE Transactions on Pattern Analysis and Machine Intelligence'
 def normalize_date(value):
     """Preserve available precision; do not invent a day for month-only dates."""
     value=str(value or '').strip()
+    # Public IEEE/CSDL month labels use both Sep. and Sept.; preserve precision.
+    value=re.sub(r'\bSept\.?\b','Sep',value,flags=re.I)
+    value=re.sub(r'\b([A-Za-z]{3})\.(?=\s|$)',r'\1',value)
     for pattern in ('%Y-%m-%d','%Y/%m/%d','%d %B %Y','%d %b %Y','%B %d, %Y','%b %d, %Y'):
         try:return datetime.strptime(value,pattern).strftime('%Y-%m-%d')
         except ValueError:pass

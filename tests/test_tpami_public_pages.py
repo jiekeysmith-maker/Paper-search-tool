@@ -49,6 +49,11 @@ def test_archive_journal_identity_may_be_accessibility_label():
         TPAMIAdapter().volume_directory(html.replace(TITLE,'Another Journal'),csdl_annual_url(2024),2024)
 
 
+def test_real_september_abbreviation():
+    rows=TPAMIAdapter().volume_directory(annual(2024,((9,'Sept.'),)),csdl_annual_url(2024),2024)
+    assert rows[0]['Issue_Publication_Date']=='2024-09'
+
+
 def test_independent_article_identity_and_authors_preserved():
     a=TPAMIAdapter();ctx=a.volume_directory(annual(2024),csdl_annual_url(2024),2024)[0]
     html=issue()+'<a href="/csdl/journal/tp/2025/01/999/xyz">Trending</a>'

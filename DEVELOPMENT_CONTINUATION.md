@@ -32,7 +32,7 @@ Latest targeted group: 49 passed (identity and recovery), including missing abst
 
 ## Native continuation
 
-Codex heartbeat automation ID `eccv-tpami` is ACTIVE every 330 minutes, attached to this thread. It was actually created with the app tool. The native update API subsequently accepted the anchored schedule: first run 2026-10-06 10:46:03 Asia/Shanghai (T0 + 5h30m), then every 330 minutes. Stop this automation only after both ECCV and TPAMI meet the user's development completion criteria. Do not touch the unrelated paused legacy automation.
+Codex heartbeat automation ID `eccv-tpami` is ACTIVE every **305 minutes**, attached to this thread. Originally created at a 330-minute interval, it was updated in place at the user's request; original prompt and completion condition were preserved exactly. The scheduling rule, not the historical interval wording in the prompt, controls wakeups. Stop this automation only after both ECCV and TPAMI meet the user's development completion criteria. Do not touch the unrelated paused legacy automation.
 
 ## TPAMI checkpoint after first real scheduled continuation
 
@@ -86,3 +86,35 @@ download; Results export required login (IEEE UI). No login/bypass attempted.
 - Next exact action: implement the foreground rendered-source path without private
   API calls or fallback after explicit access denial; retain raw HTTP and rendered
   provenance separately. Automation remains ACTIVE. No push/merge/library writes.
+
+## Public rendering transport checkpoint (after bfeac3c)
+
+- Confirmed both `9d017fc` and `bfeac3c` exist and their earlier seven-file stage
+  was fully committed. Started this stage with a clean worktree.
+- Existing automation updated through native update API to 305 minutes; name
+  `继续 ECCV 与 TPAMI 开发`, ACTIVE, same ID, prompt and stop condition unchanged.
+- Added optional `tpami_rendered.py` and `accept_tpami_rendered.py`, foreground
+  fresh unauthenticated browser, robots and access checks, ordinary public UI
+  navigation only. Reuses FetchCache/locks/audit/screen gate; no private API or
+  credential/profile imports. Successful raw navigation and rendered DOM have
+  separate hash/provenance evidence. Cache-only mode never starts a browser.
+- Real browser investigation confirmed IEEE `.issue-details`, selected-year
+  controls and `.result-item-align` article containers, public `pageNumber`
+  pagination URL, and deferred issue-month hydration. Added parsers for these.
+- Real CSDL September spelling is `Sept. 2024`; fixed month normalization with
+  a regression. The renderer waits for changed issue links after year selection,
+  so old-year rows cannot be silently captured under the new year.
+- Inventory closure uses a hash-bound rendered capture, selected year, all
+  displayed issue links and no pending pagination/loading, plus cross-source
+  inventory agreement. This is the published inventory at capture time, not a
+  forecast or assumed twelve issues. Formal gate remains unchanged.
+- 173 targeted offline tests passed in 14.56s; diff check passed; V1.2 hash unchanged.
+  Command: `D:\Anaconda\python.exe -B -m pytest tests/test_tpami.py tests/test_tpami_recovery.py tests/test_tpami_public_metadata.py tests/test_tpami_public_pages.py tests/test_tpami_rendered.py tests/test_next_aaai.py tests/test_aaai_oai_sets.py tests/test_pipeline_enumeration.py tests/test_manual_screening.py tests/test_iclr_adapter.py tests/test_eccv_identity.py -q -p no:cacheprovider --basetemp=output/tpami_20261006_resume13`
+- IMPORTANT: live renderer transport has NOT yet been executed. Playwright is
+  absent from D:\Anaconda Python. The ordinary in-app browser probe works, but
+  this is not equivalent to testing the standalone runtime. TPAMI remains NOT_READY.
+- Latest actual annual audit remains `tpami_public_archive_20261006`: REVIEW_REQUIRED,
+  metadata 0 / unresolved 3 due to HTTP SPA shells, not an empty publication year.
+- Next: validate the standalone renderer in an isolated worktree-local dependency
+  environment, then TPAMI2024 live end-to-end. Do not claim completion or turn off
+  automation based on mock tests. Never run private APIs or bypass access failure.

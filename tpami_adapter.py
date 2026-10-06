@@ -24,8 +24,9 @@ class EarlyAccessRecord(NonResearchArticle):
 
 class TPAMIAdapter:
     def volume_directory(self, html, url, year):
-        from tpami_public_pages import csdl_directory
+        from tpami_public_pages import csdl_directory, ieee_directory
         rendered=csdl_directory(html,url,year)
+        if rendered is None:rendered=ieee_directory(html,url,year)
         if rendered is not None:return rendered
         soup = BeautifulSoup(html, 'html.parser')
         text = soup.get_text(' ', strip=True)
@@ -55,6 +56,9 @@ class TPAMIAdapter:
         return rows
 
     def inventory_evidence(self,html,rows):
+        from tpami_public_pages import rendered_inventory_evidence
+        rendered=rendered_inventory_evidence(html,rows)
+        if rendered is not None:return rendered
         text=BeautifulSoup(html,'html.parser').get_text(' ',strip=True)
         counts={int(n) for n in re.findall(r'\b(\d+)\s+issues\b',text,re.I)}
         # Matching two partial lists does not prove either inventory is complete.
@@ -62,8 +66,9 @@ class TPAMIAdapter:
                     complete=bool(rows) and counts=={len(rows)})
 
     def issue_page(self, html, url, context):
-        from tpami_public_pages import csdl_issue_page
+        from tpami_public_pages import csdl_issue_page, ieee_issue_page
         rendered=csdl_issue_page(html,url,context)
+        if rendered is None:rendered=ieee_issue_page(html,url,context)
         if rendered is not None:return rendered
         soup = BeautifulSoup(html, 'html.parser')
         text = soup.get_text(' ', strip=True)
@@ -109,6 +114,8 @@ class TPAMIAdapter:
         if str(field('publication_number', 'publicationNumber')) != '34':
             raise ValueError('Wrong IEEE publication identity')
         if field('content_type', 'contentType') == 'Early Access' or data.get('isEarlyAccess') is True:
+            if field('volume') and field('issue'):
+                raise ValueError('Early Access flag conflicts with an assigned final volume/issue')
             doi=doi_key(field('doi'));native=str(field('article_number','articleNumber'))
             if not doi.startswith('10.1109/tpami.') or not native.isdigit():raise ValueError('Unassigned record lacks stable TPAMI identity')
             raise EarlyAccessRecord(dict(Title=field('title'),DOI=doi,Native_Publisher_ID=native,
