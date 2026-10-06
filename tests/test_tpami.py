@@ -59,7 +59,7 @@ def test_public_spa_fails_closed(tmp_path):
     pages={'https://ieeexplore.ieee.org/robots.txt':'User-agent: *\nAllow: /',
            'https://www.computer.org/robots.txt':'User-agent: *\nAllow: /',
            'https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=34':'<app-root></app-root>',
-           'https://www.computer.org/csdl/journal/tp/2024':'<app-root></app-root>'}
+           'https://www.computer.org/csdl/journal/tp/past-issues/2020/2024':'<app-root></app-root>'}
     cache=Site(tmp_path,'TPAMI',2024,pages); c=Collection(cache); tpami(cache,c)
     assert not c.evidence_complete and len(c.issues)==2 and not c.corpus
 

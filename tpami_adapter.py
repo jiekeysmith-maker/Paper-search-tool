@@ -24,6 +24,9 @@ class EarlyAccessRecord(NonResearchArticle):
 
 class TPAMIAdapter:
     def volume_directory(self, html, url, year):
+        from tpami_public_pages import csdl_directory
+        rendered=csdl_directory(html,url,year)
+        if rendered is not None:return rendered
         soup = BeautifulSoup(html, 'html.parser')
         text = soup.get_text(' ', strip=True)
         if TITLE not in text or str(year) not in text:
@@ -59,8 +62,15 @@ class TPAMIAdapter:
                     complete=bool(rows) and counts=={len(rows)})
 
     def issue_page(self, html, url, context):
+        from tpami_public_pages import csdl_issue_page
+        rendered=csdl_issue_page(html,url,context)
+        if rendered is not None:return rendered
         soup = BeautifulSoup(html, 'html.parser')
         text = soup.get_text(' ', strip=True)
+        if not context.get('Volume'):
+            volumes=set(re.findall(r'Volume\s*:?\s*(\d+)\b',text,re.I))
+            if len(volumes)!=1:raise ValueError('Issue page volume absent or ambiguous')
+            context={**context,'Volume':volumes.pop()}
         if TITLE not in text or not re.search(r'Volume\s*:?\s*' + re.escape(context['Volume']) + r'\b', text, re.I):
             raise ValueError('Issue page publication/volume mismatch')
         if not re.search(r'Issue\s*:?\s*' + re.escape(context['Issue']) + r'\b', text, re.I):
@@ -83,7 +93,7 @@ class TPAMIAdapter:
             if origin.hostname=='ieeexplore.ieee.org' and parse_qs(p.query).get('isnumber')!=parse_qs(origin.query).get('isnumber'):
                 raise ValueError('Pagination link changes issue identity')
             if link!=url:pages.append(link)
-        return dict(rows=rows,declared_count=int(count[1]) if count else None,pages=sorted(set(pages)))
+        return dict(rows=rows,declared_count=int(count[1]) if count else None,pages=sorted(set(pages)),context=context)
 
     def issue_index(self,html,url,context):
         page=self.issue_page(html,url,context)

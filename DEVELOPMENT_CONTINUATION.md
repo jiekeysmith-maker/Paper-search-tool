@@ -65,3 +65,24 @@ pipeline integration, with dynamic issue discovery and unresolved closure eviden
 Public IEEE document 10274722 demonstrated January 2024 issue assignment and
 09 October 2023 displayPublicationDate. Public citation export did not deliver a
 download; Results export required login (IEEE UI). No login/bypass attempted.
+
+## Public archive parser checkpoint (after 9d017fc)
+
+- Implemented `tpami_public_pages.py`, CSDL `past-issues/<decade>/<year>` routing,
+  dynamic cover-link/aria-label/month evidence, deferred volume hydration from
+  actual issue heading, CSDL article-ID/title/authors/source-URL parsing.
+- Actual archive uses full journal name in a NAV accessibility label, not visible
+  heading text; parser and regression cover this. No annual count guessed.
+- Pipeline now compares issue inventories after issue-page volume hydration.
+- 157 focused regressions passed in 10.42s (TPAMI, AAAI, ICML/ICLR pipeline, formal
+  gate and ECCV identity). `git diff --check` passed. Only TPAMI code/tests changed.
+- Actual attempt `tpami_public_archive_20261006` ran with the corrected CSDL URL:
+  one new HTTP request, remaining evidence reused; REVIEW_REQUIRED, unresolved 3,
+  metadata 0. Both public sites supply SPA shells to plain HTTP. Browsers render
+  their public inventories, so this is an acquisition gap, not an empty year.
+- Remaining: public rendered-page acquisition/cache provenance, IEEE rendered
+  directory and article pagination, inventory closure proof, true metadata-rich
+  TPAMI2024 E2E, then bounded 2025/26 checks. No production readiness claim.
+- Next exact action: implement the foreground rendered-source path without private
+  API calls or fallback after explicit access denial; retain raw HTTP and rendered
+  provenance separately. Automation remains ACTIVE. No push/merge/library writes.

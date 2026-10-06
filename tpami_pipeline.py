@@ -5,13 +5,14 @@ import re
 from venue_runtime import write_json
 from tpami_adapter import TPAMIAdapter, NonResearchArticle, EarlyAccessRecord
 from tpami_policy import YEAR_BASIS
+from tpami_public_pages import csdl_annual_url
 from eccv_access import ECCVAccess as OfficialHostAccess
 
 
 def tpami(cache, collection):
     year, adapter = cache.year, TPAMIAdapter()
     sources = [('publisher', 'https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=34'),
-               ('independent', f'https://www.computer.org/csdl/journal/tp/{year}')]
+               ('independent', csdl_annual_url(year))]
     inventories, statuses, permissions, enumeration, occurrences, events = {}, [], {}, [], [], []
     access=OfficialHostAccess(cache)
 
@@ -60,13 +61,10 @@ def tpami(cache, collection):
             statuses.append(dict(role=role,url=url,status='UNAVAILABLE',error=repr(exc),complete=False))
         save_evidence()
 
-    first={(r['Volume'],r['Issue']) for r in inventories.get('publisher',[])}
-    second={(r['Volume'],r['Issue']) for r in inventories.get('independent',[])}
-    if inventories and first!=second:collection.issue('Official final-year issue inventories disagree')
     for role,contexts in inventories.items():
         target=collection.publisher if role=='publisher' else collection.program
         annual_seen={}
-        for context in sorted(contexts,key=lambda r:(int(r['Volume']),int(r['Issue']))):
+        for context in sorted(contexts,key=lambda r:(int(r['Volume'] or 0),int(r['Issue']))):
             queue=[context['Issue_URL']];seen=set();records={};counts=set();errors=[];total=0
             while queue:
                 url=queue.pop(0)
@@ -76,6 +74,7 @@ def tpami(cache, collection):
                 seen.add(url)
                 try:
                     page=adapter.issue_page(get_public(url),url,context)
+                    context.update(page.get('context',{}))
                     if page['declared_count'] is not None:counts.add(page['declared_count'])
                     for r in page['rows']:
                         total+=1;key=r['Native_Publisher_ID']
@@ -98,6 +97,9 @@ def tpami(cache, collection):
             for error in errors:collection.issue('Issue enumeration incomplete: '+error,Issue_URL=context['Issue_URL'])
             save_evidence()
 
+    first={(r['Volume'],r['Issue']) for r in inventories.get('publisher',[])}
+    second={(r['Volume'],r['Issue']) for r in inventories.get('independent',[])}
+    if inventories and first!=second:collection.issue('Official final-year issue inventories disagree')
     excluded=set()
     for row in collection.publisher:
         try:

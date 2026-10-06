@@ -9,6 +9,7 @@ from tpami_policy import normalize_date,corpus_issues,TITLE
 from tpami_pipeline import tpami
 from venue_pipelines import Collection
 from venue_audit import audit
+from tpami_public_pages import csdl_annual_url
 
 
 def public_site():
@@ -17,7 +18,10 @@ def public_site():
     doc='https://ieeexplore.ieee.org/document/10122995'
     def annual(url):return f'<h1>{TITLE} 2024</h1>1 Issues<div>Volume 46 Issue 5 2024-05 <a href="{url}">Issue</a></div>'
     toc=f'{TITLE} Volume 46 Issue 5 1 Articles <a href="{doc}">Title</a>'
-    return {root:annual(issue),'https://www.computer.org/csdl/journal/tp/2024':annual(cs),
+    cs_annual=f'''<h1>{TITLE}</h1>1 Issues<div id="pastIssuesMenu"><div class="past-issue-panel">
+        <a class="cover-image-link" href="{cs}" aria-label="Year 2024, Issue Number 05"></a>
+        <h3>May 2024</h3></div></div>'''
+    return {root:annual(issue),csdl_annual_url(2024):cs_annual,
         issue:toc,cs:toc,doc:'<script>xplGlobal.document.metadata = '+json.dumps(metadata())+';</script>',
         'https://ieeexplore.ieee.org/robots.txt':'User-agent: *\nAllow: /',
         'https://www.computer.org/robots.txt':'User-agent: *\nAllow: /'},issue,cs,doc
@@ -42,7 +46,7 @@ def test_matching_partial_inventories_do_not_prove_completeness(tmp_path):
 
 
 def test_independent_unavailable_preserves_publisher_metadata(tmp_path):
-    pages,_,_,_=public_site();pages['https://www.computer.org/csdl/journal/tp/2024']='<app-root/>'
+    pages,_,_,_=public_site();pages[csdl_annual_url(2024)]='<app-root/>'
     c=Collection(Site(tmp_path,'TPAMI',2024,pages));tpami(c.cache,c)
     assert len(c.corpus)==1 and not c.evidence_complete
 
