@@ -104,8 +104,10 @@ class PublicRenderer:
             parser=RobotFileParser();parser.parse(response.text.splitlines())
             self.robots[urlparse(url).hostname]=(parser,response.text)
             return response
-        self.permitted(url);self._start();self.navigation=[]
+        self.navigation=[]
         try:
+            self.permitted(url)
+            self._start()
             self._goto(url)
             p=urlparse(url)
             if p.path=='/xpl/RecentIssue.jsp':

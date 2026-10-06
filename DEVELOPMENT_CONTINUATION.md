@@ -118,3 +118,36 @@ download; Results export required login (IEEE UI). No login/bypass attempted.
 - Next: validate the standalone renderer in an isolated worktree-local dependency
   environment, then TPAMI2024 live end-to-end. Do not claim completion or turn off
   automation based on mock tests. Never run private APIs or bypass access failure.
+
+## Publication-event and replay follow-up (after ca28233)
+
+- Branch `manual-multivenue-next`; parent checkpoint `ca282335b7b8aaec765f552e4b288e35444ad71d`.
+  This section is committed with the tested follow-up; use git log for its hash.
+- Every reported online/EA date is now checked against final issue date; an early
+  online date cannot hide a later contradictory EA event. Added regression.
+- Added a tiny two-source rendered-inventory pipeline fixture through audit and
+  hash-cache replay. This is offline validation, NOT real annual acceptance.
+- Browser startup/permission failures now preserve Rendered_Access_Status.json,
+  including optional-runtime import errors; added a no-browser regression.
+- 176 targeted offline tests passed in 15.94s. Same command/files as previous
+  checkpoint, with basetemp `output/tpami_20261006_resume16`. Diff check passed;
+  frozen V1.2 hash unchanged. No shared Venue code or formal gate changed.
+- CUA public probe confirmed IEEE January 2024 pageNumber=2 displays
+  `Showing 26-42 of 42`, 17 article headings and no next-page button. This supports
+  pagination parsing but does not replace full annual acceptance.
+- Standalone Playwright live execution is still pending. The browser tool requires
+  CUA for actual interactions unless the user specifically authorizes another
+  technology. An asynchronous question requesting explicit project Playwright
+  installation/execution authorization was sent; no answer received at this writing.
+  Do not treat elapsed time or scheduled wakeup as authorization. If authorized,
+  install dependencies/browser only inside this development worktree, never into
+  shared Anaconda/user profile, then run TPAMI2024 via accept_tpami_rendered.py.
+- Latest actual annual audit remains REVIEW_REQUIRED, metadata 0, unresolved 3
+  (`tpami_public_archive_20261006`), reflecting HTTP SPA shells, not zero papers.
+  TPAMI NOT_READY. ECCV engineering remains complete with source conflicts exposed.
+- Automation checked from saved configuration: `eccv-tpami`, ACTIVE, interval 305
+  minutes, same name and original stop condition. Prompt text retained verbatim as
+  requested; its historical 330-minute wording does not override the new schedule.
+- No push, merge, stable-checkout or formal Paper Library writes. Next exact action:
+  resolve the pending explicit browser-technology authorization, then validate the
+  standalone runtime against public sources; otherwise continue CUA/offline work.

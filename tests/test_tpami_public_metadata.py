@@ -61,3 +61,8 @@ def test_missing_assignment_is_not_invented_early_access():
 def test_generic_journal_type_does_not_excuse_suspected_correction():
     data=public_metadata();data.update(title='Correction to a model',articleType='Journal Article')
     with pytest.raises(ValueError,match='non-research'):TPAMIAdapter().metadata(data,final_context())
+
+
+def test_later_early_access_anomaly_not_hidden_by_earlier_online_date():
+    data=public_metadata();data['earlyAccessDate']='2025-01-01'
+    with pytest.raises(ValueError,match='publication event'):TPAMIAdapter().metadata(data,final_context())

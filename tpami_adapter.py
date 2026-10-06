@@ -183,8 +183,10 @@ class TPAMIAdapter:
             raise ValueError('Unparseable reported publication date; evidence requires review')
         dates=[d for d in (ea,online) if d]
         first=min(dates) if dates else ''
-        precision=min(len(first),len(issue_date))
-        if first and first[:precision]>issue_date[:precision]:raise ValueError('First publication occurs after assigned issue date')
+        for reported in dates:
+            precision=min(len(reported),len(issue_date))
+            if reported[:precision]>issue_date[:precision]:
+                raise ValueError('Reported publication event occurs after assigned issue date')
         return dict(Paper_ID=f'TPAMI_IEEE_{native}', Title=title, Authors=authors,
                     Abstract=abstract, Venue='TPAMI', Year=year,
                     Track=field('article_type', 'articleType') or 'Journal Article', Official_URL=f'https://ieeexplore.ieee.org/document/{native}',

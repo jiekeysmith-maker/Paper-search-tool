@@ -62,6 +62,16 @@ def test_auth_redirect_and_robots_never_become_metadata(tmp_path):
     assert page.calls==[]
 
 
+def test_renderer_start_failure_preserves_attempt_evidence(tmp_path,monkeypatch):
+    r=renderer(tmp_path,None)
+    def unavailable():raise ImportError('Optional browser runtime unavailable')
+    monkeypatch.setattr(r,'_start',unavailable)
+    with pytest.raises(ImportError):r('https://ieeexplore.ieee.org/document/123')
+    evidence=json.loads((tmp_path/'raw/Rendered_Access_Status.json').read_text())
+    assert 'Optional browser runtime unavailable' in evidence['error']
+    assert evidence['navigation']==[]
+
+
 @pytest.mark.parametrize('url',[
     'https://ieeexplore.ieee.org/rest/document/123',
     'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123',
@@ -110,3 +120,46 @@ def test_rendered_inventory_requires_untampered_selected_year_and_no_pagination(
     assert not a.inventory_evidence(capture(html).replace('Jan.','Feb.'),rows)['complete']
     partial=html.replace('</li>','</li><div class="pagination">Next</div>',1)
     assert not a.inventory_evidence(capture(partial),rows)['complete']
+
+
+def test_rendered_two_source_pipeline_and_hash_cache_replay(tmp_path):
+    """Full pipeline on a tiny structural site; deliberately not a live acceptance."""
+    from test_tpami_public_pages import annual
+    from test_tpami_public_metadata import public_metadata
+    from test_pipeline_enumeration import Site
+    from tpami_public_pages import csdl_annual_url
+    from tpami_pipeline import tpami
+    from venue_pipelines import Collection
+    from venue_audit import audit
+    root='https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=34'
+    cs=csdl_annual_url(2024);ci='https://www.computer.org/csdl/journal/tp/2024/01'
+    issue='https://ieeexplore.ieee.org/xpl/tocresult.jsp?isnumber=10345401&punumber=34'
+    doc='https://ieeexplore.ieee.org/document/10274722'
+    def captured(html,url,final):
+        proof=dict(kind='PUBLIC_RENDERED_HTML',year=2024,requested_url=url,final_url=final,
+            utc='2026-10-06',dom_sha256=sha256(html.encode()).hexdigest())
+        return html+'\n<script type="application/json" id="tpami-rendered-capture">'+json.dumps(proof)+'</script>'
+    ieee=f'''<h1>{TITLE}</h1><li class="active"><a data-analytics_identifier="past_issue_selected_year">2024</a></li>
+        <strong>Volume 46</strong><div class="issue-details"><a href="{issue}">Issue 1</a></div>'''
+    csdl=annual(2024,((1,'Jan.'),)).replace('<div id="pastIssuesMenu">',
+        '<div id="pastIssuesMenu"><li class="active"><a aria-label="Select Year 2024">2024</a></li>')
+    pages={root:captured(ieee,root,'https://ieeexplore.ieee.org/xpl/issues?punumber=34'),
+        cs:captured(csdl,cs,cs),
+        issue:f'''<h1>{TITLE}</h1>Issue 1 • Jan.-2024 Showing 1-1 of 1
+        <div class="result-item-align"><h2><a href="{doc}">Title</a></h2>
+        <xpl-authors-name-list><a href="/author/1">Author</a></xpl-authors-name-list></div>''',
+        ci:f'''<h1>{TITLE}</h1>Volume 46 Issue 1 Showing 1 out of 1
+        <div><a class="article-title" href="/csdl/journal/tp/2024/01/10274722/xyz">Title</a>
+        <div class="article-authors"><a>Author</a></div></div>''',
+        doc:'<script>xplGlobal.document.metadata='+json.dumps(public_metadata())+';</script>',
+        'https://ieeexplore.ieee.org/robots.txt':'User-agent: *\nAllow: /',
+        'https://www.computer.org/robots.txt':'User-agent: *\nAllow: /'}
+    cache=Site(tmp_path,'TPAMI',2024,pages);c=Collection(cache);tpami(cache,c)
+    assert c.evidence_complete and len(c.corpus)==1
+    assert c.corpus[0]['First_Official_Publication_Date']=='2023-10-09'
+    summary=audit(tmp_path,'TPAMI',2024,c.publisher,c.corpus,c.program,evidence_complete=c.evidence_complete,issues=c.issues)
+    assert summary['status']=='VERIFIED'
+    count=len(cache.visited)
+    def forbidden(*args,**kwargs):raise AssertionError('Network forbidden during replay')
+    cache.fetch=forbidden;again=Collection(cache);tpami(cache,again)
+    assert again.corpus==c.corpus and again.evidence_complete and len(cache.visited)==count
