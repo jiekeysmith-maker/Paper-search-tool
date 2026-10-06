@@ -9,10 +9,13 @@ from tpami_public_pages import csdl_annual_url
 from eccv_access import ECCVAccess as OfficialHostAccess
 
 
-def tpami(cache, collection):
+def tpami(cache, collection, *, primary_source='IEEE'):
     year, adapter = cache.year, TPAMIAdapter()
     sources = [('publisher', 'https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=34'),
                ('independent', csdl_annual_url(year))]
+    if primary_source=='CSDL':
+        sources=[('publisher',sources[1][1]),('independent',sources[0][1])]
+    elif primary_source!='IEEE':raise ValueError('Unknown TPAMI primary source')
     inventories, statuses, permissions, enumeration, occurrences, events = {}, [], {}, [], [], []
     access=OfficialHostAccess(cache)
 
@@ -41,7 +44,7 @@ def tpami(cache, collection):
     def save_evidence():
         write_json(cache.base/'raw/Publication_Events.json',events)
         write_json(cache.base/'raw/IEEE_Source_Enumeration.json',dict(
-            year=year,year_basis=YEAR_BASIS,sources=statuses,inventories=inventories,
+            year=year,year_basis=YEAR_BASIS,primary_source=primary_source,sources=statuses,inventories=inventories,
             issues=enumeration,publication_occurrences=occurrences,
             discovered_issue_count={k:len(v) for k,v in inventories.items()},
             enumerated_issue_count={role:sum(x['role']==role and x['complete'] for x in enumeration) for role,_ in sources},
@@ -77,6 +80,8 @@ def tpami(cache, collection):
                     context.update(page.get('context',{}))
                     if page['declared_count'] is not None:counts.add(page['declared_count'])
                     for r in page['rows']:
+                        if role=='publisher' and primary_source=='CSDL':
+                            r['Official_URL']=r['Independent_Source_URL']
                         total+=1;key=r['Native_Publisher_ID']
                         if key in records:
                             occurrences.append(dict(role=role,document_id=key,issue_url=context['Issue_URL'],page_url=url,kind='REPEATED_PAGINATION_OCCURRENCE'))

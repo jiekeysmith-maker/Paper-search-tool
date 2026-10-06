@@ -42,3 +42,29 @@ UI selector investigation, not a completed annual live transport acceptance.
 
 Implementation API references: [Playwright Page](https://playwright.dev/python/docs/api/class-page)
 and [BrowserContext](https://playwright.dev/python/docs/api/class-browsercontext).
+
+## 2026-10-06 live development findings
+
+The live transport successfully enumerated all displayed CSDL 2024 issues.
+December initially showed 100 out of 256: the transport now clicks the public
+Load More control until the displayed count closes, checking progress each time.
+No backing REST calls are constructed. The completed annual enumeration contains
+732 records across 12 observed issues; these are observations, never constants.
+Hash-verified offline replay reproduced the inventory. IEEE returned HTTP 418,
+which is retained as an access restriction, not retried through another mechanism.
+
+`--primary-source CSDL` explicitly selects CSDL as the publication metadata source
+and IEEE as independent verification. It is saved in the attempt policy; do not
+switch roles within an existing attempt. Public CSDL citation metadata supplies
+DOI, authors, final issue and abstract (`description` and `og:description` must
+agree). Its issue publication date never supplies an invented Early Access date.
+IEEE failure still blocks VERIFIED even when CSDL metadata is usable. This mode
+does not treat two CSDL pages as independent official sources.
+
+Installed isolated runtime: `output/tpami_runtime/pw155` (Playwright 1.55.0),
+`output/tpami_runtime/browsers155` (Chromium Headless Shell 140.0.7339.16, v1187).
+Set PYTHONPATH, PLAYWRIGHT_BROWSERS_PATH and TEMP/TMP to those worktree-local
+locations when invoking the entry. The 1.63.0 browser download stalled; its
+partial files remain preserved separately. No shared Python install was changed.
+Persisted access restrictions are honored on resume, while verified cache bodies
+remain readable. Failure DOM is diagnostic evidence only, not a successful cache.

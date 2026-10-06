@@ -174,3 +174,39 @@ download; Results export required login (IEEE UI). No login/bypass attempted.
   anything else; avoid duplicate installs. Once installed, run isolated TPAMI2024
   acceptance and classify its real audit, followed by cache-only replay. Keep
   PUBLIC sources fail-closed; the latest annual audit is still REVIEW_REQUIRED.
+
+## Live CSDL enumeration and explicit primary-source checkpoint (after 67f60c9)
+
+- Isolated Playwright 1.55.0 at `output/tpami_runtime/pw155` successfully installed
+  official Chromium Headless Shell 140.0.7339.16 / revision1187 under
+  `output/tpami_runtime/browsers155`. Both 1.63 download attempts were stopped;
+  partial download files retained. No installation outside the worktree.
+- Actual `tpami_rendered_live_20261006` ran: IEEE returned HTTP418 and was blocked.
+  CSDL archive dynamically found 12 issues. December exposed a real lazy-loading
+  defect: 100/256 articles initially. Implemented normal public Load More clicks
+  with progress/count checks; refreshed only that page, preserving its old cache.
+- CSDL completed inventory: 732 article identities across all12 observed issues.
+  Offline replay reproduced complete issue enumeration. Audit REVIEW_REQUIRED,
+  metadata0 / independent732 / unresolved735 because IEEE unavailable; these are
+  audit rows, not missing-paper counts. Old attempt remains intact.
+- Public CSDL detail probe exposed complete citation tags, DOI, authors, final
+  issue date and official meta description/og:description abstract. Implemented
+  strict parsing; no online-first/EA date inferred from citation issue date.
+- New explicit `--primary-source CSDL` selects CSDL publisher and IEEE verifier;
+  policy saved per attempt. Missing IEEE always blocks formal gate. Access-denial
+  evidence inherited on resume; no alternative IEEE browser/access bypass tried.
+- `tpami_csdl_primary_20261006` seeded only hash-verified successful cache files
+  and existing IEEE restriction evidence from the previous attempt. Own interrupted
+  lock PID26592 was verified absent and archived as run.lock.interrupted-26592.
+  Fixed real meta[name="og:description"] vs property selector before resuming.
+- LIVE AT THIS CHECKPOINT: acceptance Python PID36120, exec session41488. Inspect
+  process and runtime/run.lock before restarting! At last check34 metadata rows,
+  all with abstracts, no metadata errors; the only issues are IEEE access and
+  inventory mismatch. This count is progress, NOT final annual acceptance.
+- 192 targeted offline tests passed in15.29s (`resume22`), including CSDL primary,
+  missing-verifier gate, lazy loading, real public tags, date/identity conflicts,
+  HTTP418. Shared AAAI/ICML/ICLR/ECCV regressions included. V1.2 unchanged.
+- Next exact action: monitor existing foreground acceptance, inspect real failures,
+  then run cache-only replay and compare corpus hashes/identities. Do not launch
+  a duplicate. Keep automation ACTIVE305; TPAMI remains NOT_READY until annual
+  metadata collection and replay have finished and all unresolved facts are clear.

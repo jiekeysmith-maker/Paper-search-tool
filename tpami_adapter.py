@@ -202,6 +202,8 @@ class TPAMIAdapter:
 
     def detail(self, html, url, context):
         soup = BeautifulSoup(html, 'html.parser')
+        if urlparse(url).hostname=='www.computer.org':
+            return self.csdl_detail(soup,url,context)
         def checked(data):
             try:row=self.metadata(data,context)
             except NonResearchArticle as exc:
@@ -232,3 +234,42 @@ class TPAMIAdapter:
                 abstract=tag('abstract'),publication_date=tag('online_date') or tag('publication_date'),
                 early_access_date=tag('online_date'),pdf_url=tag('pdf_url'),article_type=tag('article_type')))
         raise ValueError('No public IEEE document metadata; no fabricated abstract or restricted REST request')
+
+    def csdl_detail(self,soup,url,context):
+        """Observed public CSDL citation tags; final date is not online-first."""
+        identity=re.fullmatch(r'/csdl/journal/tp/(\d{4})/(\d+)/(\d+)/([^/]+)',urlparse(url).path)
+        tags={}
+        for node in soup.select('meta[name],meta[property]'):
+            tags.setdefault(node.get('name') or node.get('property'),[]).append(node.get('content',''))
+        def tag(key):
+            values=tags.get(key,[])
+            if len(set(values))>1:raise ValueError('Conflicting CSDL metadata '+key)
+            return values[0] if values else ''
+        if (not identity or int(identity[1])!=int(context['Year']) or int(identity[2])!=int(context['Issue'])
+                or tag('og:url').rstrip('/')!=url.rstrip('/')
+                or tag('citation_journal_title')!=TITLE or tag('citation_issn') not in ('0162-8828','1939-3539')):
+            raise ValueError('CSDL journal/URL/final issue identity conflict')
+        if context.get('Native_Publisher_ID') and str(context['Native_Publisher_ID'])!=identity[3]:
+            raise ValueError('CSDL document identity conflicts with issue inventory')
+        if tag('doi') and doi_key(tag('doi'))!=doi_key(tag('citation_doi')):
+            raise ValueError('CSDL DOI metadata conflict')
+        date=normalize_date(tag('citation_publication_date'))
+        if not date or date[:7]!=normalize_date(context['Issue_Publication_Date'])[:7]:
+            raise ValueError('CSDL final publication date conflicts with issue')
+        abstract=tag('description');og=tag('og:description')
+        if not abstract or not og or abstract!=og:
+            raise ValueError('CSDL public abstract metadata missing/conflicting')
+        # Public CSDL citation dates are issue dates. Never invent an EA date.
+        data=dict(publication_title=tag('citation_journal_title'),publication_number=34,content_type='Journals',
+            volume=tag('citation_volume'),issue=str(int(tag('citation_issue') or 0)),publication_year=date[:4],
+            doi=tag('citation_doi'),article_number=identity[3],authors=tags.get('citation_author',[]),
+            title=tag('citation_title'),abstract=abstract,article_type=tag('citation_article_type'))
+        try:row=self.metadata(data,context)
+        except NonResearchArticle as exc:
+            exc.proof.update(Official_URL=url,Retrieval_Source=url)
+            raise
+        row.update(Official_URL=url,Retrieval_Source=url,Abstract_Source_URL=url,
+            Publisher_Issue_Date=tag('citation_publication_date'),
+            First_Publication_Date_Evidence='Not reported in captured CSDL citation metadata; no inferred Early Access date',
+            Formal_Publication_Evidence=f'IEEE Computer Society TPAMI final issue; {context["Issue_URL"]}; DOI {row["DOI"]}')
+        return row

@@ -59,7 +59,7 @@ def test_partial_render_timeout_is_evidence_not_success(tmp_path):
     assert sha256(payload).hexdigest()==status['partial']['sha256']
 
 
-@pytest.mark.parametrize('status',[202,401,403,429,500])
+@pytest.mark.parametrize('status',[202,401,403,418,429,500])
 def test_denied_response_not_success_cache(tmp_path,status):
     r=renderer(tmp_path,Page(status));cache=FetchCache(tmp_path,'TPAMI',2024,fetch=r,delay=0)
     url='https://ieeexplore.ieee.org/document/123'
@@ -86,6 +86,29 @@ def test_renderer_start_failure_preserves_attempt_evidence(tmp_path,monkeypatch)
     evidence=json.loads((tmp_path/'raw/Rendered_Access_Status.json').read_text())
     assert 'Optional browser runtime unavailable' in evidence['error']
     assert evidence['navigation']==[]
+
+
+@pytest.mark.parametrize('stalled',[False,True])
+def test_csdl_public_load_more_closes_or_rejects_partial_inventory(tmp_path,stalled):
+    class Lazy:
+        url='https://www.computer.org/csdl/journal/tp/2024/12'
+        shown=2
+        def locator(self,selector):return self
+        def inner_text(self):return f'Showing {self.shown} out of 5'
+        def get_by_text(self,text,exact):
+            assert text=='Load More' and exact
+            return self
+        def count(self):return 1
+        def is_visible(self):return True
+        def click(self):
+            if not stalled:self.shown=min(5,self.shown+2)
+        def wait_for_function(self,expression,arg):
+            if stalled:raise TimeoutError('No public UI progress')
+    page=Lazy();r=renderer(tmp_path,page)
+    if stalled:
+        with pytest.raises(TimeoutError):r._complete_csdl_issue()
+    else:
+        r._complete_csdl_issue();assert page.shown==5
 
 
 @pytest.mark.parametrize('url',[
