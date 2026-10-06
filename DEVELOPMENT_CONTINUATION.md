@@ -46,3 +46,22 @@ The automation actually fired at 2026-10-06T02:46:30Z. Git/WIP checks completed.
 - IEEE also renders normally in the in-app browser. Home has an All Issues link; `/xpl/issues?punumber=34&isnumber=11674301` exposes year controls and actual issue links. Raw HTTP only provides SPA shells, and one raw document request returned 202.
 - Thus NOT_READY, but NOT irrecoverably source-blocked. Next: inspect IEEE 2024 issue navigation and public citation export; adapt real rendered DOM or official export ingestion (no private REST, no bypass). Correct CSDL source discovery. Preserve snapshots/evidence from normal public UI. Do not declare the mocked prototype production-ready.
 - Current browser handles at this writing: CSDL tab 1 in browser 2, IEEE tab 2. Re-discover if stale. Native automation remains ACTIVE because TPAMI is unfinished.
+
+## Resumed after approval-service quota interruption
+
+Verified HEAD before this checkpoint: `51688ff`, branch `manual-multivenue-next`.
+Only `tpami_adapter.py` and untracked `tests/test_tpami_public_metadata.py` survived.
+The attempted public-pages/pipeline patch did NOT execute; `tpami_public_pages.py` was absent.
+Retained and re-tested the valid public `periodicals` schema fix, journal/issue ID
+checks, distinct displayPublicationDate versus final publicationDate, explicit EA
+classification, and conservative unknown non-research/date handling.
+113 targeted tests passed in 12.78s after actual resumption (TPAMI plus acceptance,
+AAAI, ICML/ICLR pipeline and formal screening); diff check passed; V1.2 unchanged.
+Automation `eccv-tpami` checked: ACTIVE, 330-minute interval, no duplicate created.
+Latest persisted TPAMI2024 audit is still `tpami_final_issue_20261006`, REVIEW_REQUIRED,
+metadata 0, unresolved 3; this is NOT a successful corpus acceptance.
+Next exact action: implement the missing CSDL past-issues rendered-page parser and
+pipeline integration, with dynamic issue discovery and unresolved closure evidence.
+Public IEEE document 10274722 demonstrated January 2024 issue assignment and
+09 October 2023 displayPublicationDate. Public citation export did not deliver a
+download; Results export required login (IEEE UI). No login/bypass attempted.

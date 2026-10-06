@@ -98,7 +98,7 @@ class TPAMIAdapter:
             raise ValueError('Not TPAMI')
         if str(field('publication_number', 'publicationNumber')) != '34':
             raise ValueError('Wrong IEEE publication identity')
-        if field('content_type', 'contentType') == 'Early Access' or not field('volume') or not field('issue'):
+        if field('content_type', 'contentType') == 'Early Access' or data.get('isEarlyAccess') is True:
             doi=doi_key(field('doi'));native=str(field('article_number','articleNumber'))
             if not doi.startswith('10.1109/tpami.') or not native.isdigit():raise ValueError('Unassigned record lacks stable TPAMI identity')
             raise EarlyAccessRecord(dict(Title=field('title'),DOI=doi,Native_Publisher_ID=native,
@@ -107,7 +107,14 @@ class TPAMIAdapter:
                 Publisher_Publication_Date=field('publication_date','publicationDate'),
                 Reason='Official record has no final issue assignment; no corpus year inferred',
                 BibTeX_or_Publisher_Metadata=json.dumps(data,ensure_ascii=False)))
-        if field('content_type', 'contentType') != 'Journals':
+        if not field('volume') or not field('issue'):
+            raise ValueError('Missing final issue assignment; no explicit Early Access classification')
+        # Public Xplore HTML uses "periodicals", unlike the Metadata API.
+        # Accept this observed schema only with its affirmative journal flags.
+        public_page = (field('content_type', 'contentType') == 'periodicals'
+                       and data.get('contentTypeDisplay') == 'Journals'
+                       and data.get('isJournal') is True)
+        if field('content_type', 'contentType') != 'Journals' and not public_page:
             raise ValueError('Unverified journal article type')
         year = int(context['Year'])
         if (str(field('volume')) != str(context['Volume']) or str(field('issue')) != str(context['Issue'])
@@ -121,12 +128,21 @@ class TPAMIAdapter:
             raise ValueError('Missing IEEE document identity')
         issue_date=normalize_date(context['Issue_Publication_Date'])
         if not issue_date.startswith(str(year)):raise ValueError('Final issue publication date/year conflict')
+        if public_page:
+            published=normalize_date(field('publication_date','publicationDate'))
+            if not published or published[:7]!=issue_date[:7]:
+                raise ValueError('Public document final issue date conflicts with issue directory')
+            issue_ids=parse_qs(urlparse(context['Issue_URL']).query).get('isnumber',[])
+            if issue_ids and str(data.get('isNumber','')) not in issue_ids:
+                raise ValueError('Public document final issue identity mismatch')
+            if data.get('isEphemera') is True:
+                raise ValueError('Official ephemera flag requires explicit non-research classification')
         kind=str(field('article_type','articleType')).strip()
         if kind.casefold() in {'editorial','front matter','correction','corrections','erratum','index','cover','masthead','announcements'}:
             raise NonResearchArticle({**context,'Title':field('title'),'DOI':doi,'Native_Publisher_ID':native,
                 'Official_URL':f'https://ieeexplore.ieee.org/document/{native}','Publication_Type':kind,
                 'Reason':'Explicit official article type and final issue assignment'})
-        if re.match(r'^(?:correction to|erratum|editorial|front matter|masthead)\b',str(field('title')),re.I) and not kind:
+        if re.match(r'^(?:correction to|erratum|editorial|front matter|masthead)\b',str(field('title')),re.I):
             raise ValueError('Possible non-research article lacks explicit official type evidence')
         names = field('authors', default=[])
         if isinstance(names, dict):
@@ -140,17 +156,25 @@ class TPAMIAdapter:
         abstract=BeautifulSoup(abstract,'html.parser').get_text(' ',strip=True)
         from eccv_metadata import abstract_issue
         if abstract_issue(title,abstract):raise ValueError(abstract_issue(title,abstract))
-        ea=normalize_date(field('early_access_date','earlyAccessDate'))
-        online=normalize_date(field('publication_date','publicationDate'))
+        ea_raw=field('early_access_date','earlyAccessDate')
+        # displayPublicationDate labels "Date of Publication" in public HTML;
+        # publicationDate labels the final issue month. Never confuse the two.
+        online_raw=data.get('displayPublicationDate','') if public_page else field('publication_date','publicationDate')
+        ea=normalize_date(ea_raw)
+        online=normalize_date(online_raw)
+        if (ea_raw and not ea) or (online_raw and not online):
+            raise ValueError('Unparseable reported publication date; evidence requires review')
         dates=[d for d in (ea,online) if d]
         first=min(dates) if dates else ''
-        if first and first[:4]>str(year):raise ValueError('First publication occurs after assigned issue year')
+        precision=min(len(first),len(issue_date))
+        if first and first[:precision]>issue_date[:precision]:raise ValueError('First publication occurs after assigned issue date')
         return dict(Paper_ID=f'TPAMI_IEEE_{native}', Title=title, Authors=authors,
                     Abstract=abstract, Venue='TPAMI', Year=year,
                     Track=field('article_type', 'articleType') or 'Journal Article', Official_URL=f'https://ieeexplore.ieee.org/document/{native}',
-                    PDF_URL=field('pdf_url', 'pdfUrl'), DOI=doi, Volume=str(context['Volume']), Issue=str(context['Issue']),
+                    PDF_URL=urljoin('https://ieeexplore.ieee.org',field('pdf_url', 'pdfUrl')) if field('pdf_url','pdfUrl') else '', DOI=doi, Volume=str(context['Volume']), Issue=str(context['Issue']),
                     Year_Basis=YEAR_BASIS, Final_Issue_Year=year, Issue_Publication_Date=context['Issue_Publication_Date'],
-                    Published_Date=context['Issue_Publication_Date'], Publisher_Publication_Date=field('publication_date', 'publicationDate'),
+                    Published_Date=context['Issue_Publication_Date'], Publisher_Publication_Date=online_raw,
+                    Publisher_Issue_Date=field('publication_date','publicationDate') if public_page else '',
                     Early_Access_Date=field('early_access_date', 'earlyAccessDate'), Native_Publisher_ID=native,
                     First_Official_Publication_Date=first,First_Publication_Date_Evidence='Earliest explicitly reported publisher/early-access date; no inferred dates',
                     Year_Assignment_Evidence=f'Final issue assignment {context["Issue_URL"]}; Early Access never assigns corpus year',
